@@ -3,8 +3,7 @@ using UnityEngine;
 namespace PickupCent.Economy
 {
     /// <summary>
-    /// 누적 점수(돈)를 추적하는 임시 트래커.
-    /// 정식 UI는 다음 단계 — 지금은 로그 + 화면 좌상단 숫자 표시 정도로만 확인한다.
+    /// 누적 점수(돈)를 추적한다. 화면 표시는 PickupCent.UI.HudController가 Score를 읽어서 담당한다.
     /// </summary>
     public class ScoreTracker : MonoBehaviour
     {
@@ -18,14 +17,11 @@ namespace PickupCent.Economy
             Debug.Log($"[Score] +{amount} ({itemName}) → 누적 {score}");
         }
 
-        private void OnGUI()
+        /// <summary>강화 구매 등으로 점수를 소비한다. 잔액 확인은 호출 측(UpgradeManager)에서 먼저 한다.</summary>
+        public void Spend(int amount)
         {
-            var style = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 24,
-                normal = { textColor = Color.white }
-            };
-            GUI.Label(new Rect(16, 16, 300, 40), $"점수: {score}", style);
+            score -= amount;
+            Debug.Log($"[Score] -{amount} (강화 구매) → 누적 {score}");
         }
     }
 }

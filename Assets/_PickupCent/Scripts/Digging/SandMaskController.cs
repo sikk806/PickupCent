@@ -1,5 +1,6 @@
 using Unity.Collections;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 
 namespace PickupCent.Digging
@@ -58,6 +59,14 @@ namespace PickupCent.Digging
         private bool readbackPending;
         private byte[] cpuCache;
         private int cpuCacheRes;
+        private int cpuCacheBytesPerPixel = 1;
+        private bool loggedReadbackDiagnostics;
+
+        // 마스크는 색이 아니라 데이터(침식량)이므로 항상 sRGB 없는 8비트 단일 채널로 만든다.
+        // RenderTextureFormat.R8 + 프로젝트의 sRGB 색공간 설정을 그대로 두면 Unity가
+        // 내부적으로 R8_SRGB를 요청했다가(미지원) RGBA32로 조용히 폴백하는 경우가 있어(콘솔 경고 참고),
+        // GraphicsFormat을 직접 지정해서 그 폴백 경로 자체를 피한다.
+        private static readonly GraphicsFormat MaskGraphicsFormat = GraphicsFormat.R8_UNorm;
 
         private float lastStrength, lastHardness;
 
@@ -70,6 +79,15 @@ namespace PickupCent.Digging
         {
             get => strength;
             set => strength = value;
+        }
+
+        public float BrushRadius => brushRadius;
+
+        /// <summary>파기 범위 강화. UpgradeManager가 호출 — 브러시 반경을 확장한다.</summary>
+        public void AddBrushRadius(float amount)
+        {
+            brushRadius += amount;
+            Debug.Log($"[SandMask] 브러시 반경 +{amount} → 현재 {brushRadius}");
         }
 
         private void Awake()
@@ -100,12 +118,35 @@ namespace PickupCent.Digging
 
         private RenderTexture CreateMaskRT()
         {
-            var rt = new RenderTexture(textureResolution, textureResolution, 0, RenderTextureFormat.R8)
+            if (!SystemInfo.IsFormatSupported(MaskGraphicsFormat, FormatUsage.Render))
+            {
+                Debug.LogWarning($"[SandMask] {MaskGraphicsFormat}이 이 플랫폼에서 Render 용도로 지원되지 않습니다. " +
+                                  "Unity가 다른 포맷으로 대체할 수 있으니 아래 실제 생성된 graphicsFormat 로그를 확인하세요.");
+            }
+
+            var desc = new RenderTextureDescriptor(textureResolution, textureResolution, MaskGraphicsFormat, 0)
+            {
+                sRGB = false,
+                msaaSamples = 1,
+                useMipMap = false,
+                autoGenerateMips = false
+            };
+
+            var rt = new RenderTexture(desc)
             {
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear
             };
             rt.Create();
+
+            if (rt.graphicsFormat != MaskGraphicsFormat)
+            {
+                Debug.LogWarning($"[SandMask] 요청한 포맷({MaskGraphicsFormat})과 실제 생성된 포맷" +
+                                  $"({rt.graphicsFormat})이 다릅니다. 체크포인트 판정용 리드백 코드는 " +
+                                  "픽셀당 바이트 수를 자동으로 계산하므로 동작은 하지만, 값이 sRGB 보정을 " +
+                                  "받을 수 있으니 가능하면 지원되는 GPU/플랫폼에서 확인하세요.");
+            }
+
             return rt;
         }
 
@@ -209,13 +250,30 @@ namespace PickupCent.Digging
         private void OnReadbackComplete(AsyncGPUReadbackRequest req)
         {
             readbackPending = false;
-            if (req.hasError) return;
+            if (req.hasError)
+            {
+                Debug.LogWarning("[SandMask] AsyncGPUReadback 실패 (req.hasError=true), 이번 프레임 리드백을 건너뜁니다.");
+                return;
+            }
 
             NativeArray<byte> data = req.GetData<byte>();
+
+            int expectedPixels = textureResolution * textureResolution;
+            int bytesPerPixel = expectedPixels > 0 ? Mathf.Max(1, data.Length / expectedPixels) : 1;
+
+            if (!loggedReadbackDiagnostics)
+            {
+                loggedReadbackDiagnostics = true;
+                Debug.Log($"[SandMask] 리드백 진단 — data.Length={data.Length}, " +
+                          $"1바이트/px 가정 시 예상 길이={expectedPixels}, 실측 bytesPerPixel={bytesPerPixel}, " +
+                          $"RT graphicsFormat={current.graphicsFormat}");
+            }
+
             if (cpuCache == null || cpuCache.Length != data.Length)
                 cpuCache = new byte[data.Length];
             data.CopyTo(cpuCache);
             cpuCacheRes = textureResolution;
+            cpuCacheBytesPerPixel = bytesPerPixel;
         }
 
         /// <summary>월드 좌표의 마스크 값을 0~255 범위로 반환한다. (아직 리드백이 없으면 255=완전히 덮임으로 간주)</summary>
@@ -230,7 +288,9 @@ namespace PickupCent.Digging
             float vy = readbackFlipY ? 1f - uv.y : uv.y;
             int y = Mathf.Clamp(Mathf.RoundToInt(vy * (cpuCacheRes - 1)), 0, cpuCacheRes - 1);
 
-            int index = y * cpuCacheRes + x;
+            // 픽셀당 바이트 수는 실측값(cpuCacheBytesPerPixel)을 쓴다 — RT가 R8이 아니라
+            // RGBA류로 폴백된 경우에도 각 픽셀의 첫 바이트(R 채널, 셰이더가 값을 저장하는 채널)를 읽는다.
+            int index = (y * cpuCacheRes + x) * cpuCacheBytesPerPixel;
             if (index < 0 || index >= cpuCache.Length) return 255f;
             return cpuCache[index];
         }

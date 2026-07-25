@@ -4,7 +4,8 @@ namespace PickupCent.Digging
 {
     /// <summary>
     /// 마우스 좌클릭 드래그 입력을 읽어 SandMaskController.Erode()를 호출한다.
-    /// 금속탐지기가 장착된 동안에는 파는 동작 자체를 하지 않는다(ToolManager.IsDiggingTool로 판단).
+    /// 손/삽/금속탐지기 셋 다 파기가 기본 동작이라 지금은 항상 동작한다
+    /// (ToolManager.IsDiggingTool은 훗날 파기가 아닌 도구가 추가될 때를 대비한 게이트로 남겨둠).
     /// </summary>
     [RequireComponent(typeof(SandMaskController))]
     public class SandDigInput : MonoBehaviour

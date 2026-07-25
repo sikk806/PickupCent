@@ -7,7 +7,8 @@ namespace PickupCent.Digging
 {
     /// <summary>
     /// 파낼 수 있는 아이템 하나. 몸 주변 9개 체크포인트의 마스크 값을 확인해서
-    /// 75% 이상이 알파 10 이하(=뚫림)가 되면 습득 처리한다.
+    /// 75% 이상이 알파 10 이하(=뚫림)가 되면 습득 처리한다. 손/삽/금속탐지기 전부 이 파기 경로를
+    /// 공유하므로 도구 종류나 아이템 종류(코인/구슬/딱지)와 무관하게 파면 습득할 수 있다.
     /// itemDefinition이 있으면(ItemSpawner가 생성) 그 값으로 점수/탐지가능여부를 판단하고,
     /// 없으면(Test1/Test2의 고정 더미) 예전처럼 값 없이 습득 로그만 남긴다 — 하위 호환용.
     /// </summary>
@@ -17,6 +18,10 @@ namespace PickupCent.Digging
         [SerializeField] private SandMaskController sandMask;
         [SerializeField] private ToolManager toolManager;
         [SerializeField] private ItemDefinition itemDefinition;
+
+        [Header("금속탐지기 발견 표시(마커) - 습득과 무관한 정보성 표시")]
+        [SerializeField] private Color spottedMarkerColor = new Color(1f, 0.95f, 0.2f);
+        [SerializeField] private float spottedMarkerSize = 0.3f;
 
         [Tooltip("체크포인트 3x3 격자가 퍼지는 반경(로컬 단위)")]
         [SerializeField] private float checkRadius = 0.4f;
@@ -43,12 +48,14 @@ namespace PickupCent.Digging
         public ItemDefinition Definition => itemDefinition;
 
         private SpriteRenderer sr;
+        private SpriteRenderer spottedMarker;
         private Vector2[] checkpointOffsets;
         private int lastExposedCount = -1;
         private float timer;
         private bool found;
         private bool destroyed;
-        private bool detectedByDetector;
+        private bool spotted;
+        private float detectorHoverTimer;
 
         private string DisplayName => itemDefinition != null ? itemDefinition.itemName : name;
 
@@ -59,6 +66,7 @@ namespace PickupCent.Digging
             sr = GetComponent<SpriteRenderer>();
             if (sandMask == null) sandMask = FindFirstObjectByType<SandMaskController>();
             if (toolManager == null) toolManager = FindFirstObjectByType<ToolManager>();
+            EnsureSpottedMarker();
             GenerateOffsets();
             if (itemDefinition != null) ApplyVisual();
         }
@@ -71,12 +79,27 @@ namespace PickupCent.Digging
 
             found = false;
             destroyed = false;
-            detectedByDetector = false;
             lastExposedCount = -1;
             timer = 0f;
+            HideSpottedMarker();
 
             if (sr == null) sr = GetComponent<SpriteRenderer>();
             ApplyVisual();
+        }
+
+        private void EnsureSpottedMarker()
+        {
+            if (spottedMarker != null) return;
+
+            var markerGO = new GameObject("SpottedMarker");
+            markerGO.transform.SetParent(transform, false);
+            // 사각의 모래 레이어(z=0)보다 카메라에 더 가깝게 둬서, 덜 파낸 상태에서도 표시가 가려지지 않게 한다.
+            markerGO.transform.localPosition = new Vector3(0f, 0.5f, -1f);
+
+            spottedMarker = markerGO.AddComponent<SpriteRenderer>();
+            spottedMarker.sprite = ProceduralSprites.CreateCircle(32, spottedMarkerColor, spottedMarkerSize);
+            spottedMarker.sortingOrder = 10;
+            markerGO.SetActive(false);
         }
 
         private void ApplyVisual()
@@ -99,7 +122,7 @@ namespace PickupCent.Digging
 
         private void Update()
         {
-            if (destroyed || detectedByDetector || sandMask == null) return;
+            if (destroyed || sandMask == null) return;
 
             timer += Time.deltaTime;
             if (timer < checkInterval) return;
@@ -143,28 +166,54 @@ namespace PickupCent.Digging
             if (isShovel && UnityEngine.Random.value < toolManager.ShovelDestroyChance)
             {
                 destroyed = true;
+                HideSpottedMarker();
                 Debug.Log($"[DiggableItem:{DisplayName}] 파괴됨 (삽 파괴 확률 발동, {exposed}/9 노출)");
                 OnDestroyedByRisk?.Invoke(this);
                 return;
             }
 
             found = true;
+            HideSpottedMarker();
             string valueLabel = itemDefinition != null ? $", 가치 {itemDefinition.value}" : string.Empty;
             Debug.Log($"[DiggableItem:{DisplayName}] 습득됨 ({exposed}/9 노출, {ratio:P0}{valueLabel})");
             OnAcquired?.Invoke(this);
         }
 
-        /// <summary>금속탐지기가 매 프레임 호출. itemDefinition.detectableByMetalDetector가 true일 때만 반응.</summary>
-        public void TryDetectorScan(Vector2 worldPos, float radius)
+        /// <summary>
+        /// 금속탐지기 장착 중 매 프레임 호출(클릭 여부 무관). 습득이 아니라 "발견 표시"만 한다 —
+        /// itemDefinition.detectableByMetalDetector가 true인 아이템에 한해, 마우스가 반경 안에
+        /// dwellTime 이상 연속으로 머물러야 표시가 뜬다. 반경을 벗어나면 머문 시간은 리셋된다.
+        /// </summary>
+        public void UpdateDetectorHover(Vector2 mouseWorldPos, float radius, float dwellTime, float deltaTime)
         {
-            if (destroyed || detectedByDetector || found) return;
-            if (itemDefinition == null || !itemDefinition.detectableByMetalDetector) return;
-            if (Vector2.Distance(transform.position, worldPos) > radius) return;
+            bool detectable = itemDefinition != null && itemDefinition.detectableByMetalDetector;
+            if (!detectable || destroyed || found || spotted)
+            {
+                detectorHoverTimer = 0f;
+                return;
+            }
 
-            detectedByDetector = true;
-            found = true;
-            Debug.Log($"[DiggableItem:{DisplayName}] 금속탐지기로 발견됨 (파지 않고 즉시 발견, 가치 {itemDefinition.value})");
-            OnAcquired?.Invoke(this);
+            bool inRange = Vector2.Distance(transform.position, mouseWorldPos) <= radius;
+            if (!inRange)
+            {
+                detectorHoverTimer = 0f;
+                return;
+            }
+
+            detectorHoverTimer += deltaTime;
+            if (detectorHoverTimer >= dwellTime)
+            {
+                spotted = true;
+                if (spottedMarker != null) spottedMarker.gameObject.SetActive(true);
+                Debug.Log($"[DiggableItem:{DisplayName}] 금속탐지기에 발견 표시됨 (습득 아님, 파야 얻을 수 있음)");
+            }
+        }
+
+        private void HideSpottedMarker()
+        {
+            spotted = false;
+            detectorHoverTimer = 0f;
+            if (spottedMarker != null) spottedMarker.gameObject.SetActive(false);
         }
 
         private void OnDrawGizmosSelected()

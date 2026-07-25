@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using PickupCent.Digging;
 using UnityEngine;
@@ -5,17 +6,28 @@ using UnityEngine;
 namespace PickupCent.Economy
 {
     /// <summary>
-    /// itemPool(5종 ItemDefinition)을 가중치 기반으로 뽑아 필드 위에 항상 itemCount개를 유지한다.
-    /// 습득되면 점수를 지급하고 같은 오브젝트를 재사용해 다른 자리로 재배치한다(파괴된 경우는 점수 없이 재배치만).
+    /// itemPool(5종 ItemDefinition)을 가중치 기반으로 뽑아 필드 위에 기본적으로 itemCount개를 유지한다.
+    /// 평상시 스폰 위치는 지형지물(TerrainFeature) 주변으로 편향되거나 필드 전체에서 균등하게 뽑힌다.
+    /// 습득되면 점수를 지급하고, 활성 개수가 기본치 이하일 때만 같은 오브젝트를 재사용해 재배치한다
+    /// (파괴된 경우는 점수 없이 동일하게 처리). TriggerSpawnBurst()로 일시적으로 개수를 2배까지 늘릴 수 있고,
+    /// 그동안은 재보충을 멈춰서 습득할 때마다 자연스럽게 기본치로 줄어들게 한다.
     /// </summary>
     public class ItemSpawner : MonoBehaviour
     {
+        /// <summary>정상 습득(점수 지급)될 때마다 발생. UI 습득 피드백 텍스트가 구독한다.</summary>
+        public event Action<ItemDefinition> OnItemPickedUp;
+
         [SerializeField] private SandMaskController sandMask;
         [SerializeField] private ScoreTracker scoreTracker;
         [SerializeField] private ItemDefinition[] itemPool;
         [SerializeField] private int itemCount = 5;
         [Tooltip("필드 가장자리로부터 스폰을 피할 여백(월드 단위)")]
         [SerializeField] private float edgeMargin = 0.8f;
+
+        [Header("지형지물 스폰 편향")]
+        [SerializeField] private TerrainFeature[] terrainFeatures;
+        [Tooltip("평상시 스폰에서 지형지물 주변을 고를 확률(나머지는 필드 전체 균등)")]
+        [SerializeField, Range(0f, 1f)] private float terrainBiasChance = 0.6f;
 
         private readonly List<DiggableItem> activeItems = new List<DiggableItem>();
         private float totalWeight;
@@ -29,7 +41,7 @@ namespace PickupCent.Economy
 
         private void Start()
         {
-            for (int i = 0; i < itemCount; i++) SpawnOne();
+            for (int i = 0; i < itemCount; i++) SpawnOne(null);
         }
 
         private void RecalculateWeights()
@@ -44,7 +56,7 @@ namespace PickupCent.Economy
         {
             if (itemPool == null || itemPool.Length == 0 || totalWeight <= 0f) return null;
 
-            float r = Random.value * totalWeight;
+            float r = UnityEngine.Random.value * totalWeight;
             float acc = 0f;
             foreach (var def in itemPool)
             {
@@ -55,7 +67,43 @@ namespace PickupCent.Economy
             return itemPool[itemPool.Length - 1];
         }
 
-        private Vector2 RandomSpawnPosition()
+        // --- 스폰 위치 후보 ---
+
+        /// <summary>burstBand가 있으면 "지형지물 주변 + 방금 지나간 밴드"가 합쳐진 후보군에서, 없으면 평상시 후보군에서 고른다.</summary>
+        private Vector2 PickSpawnPosition(Rect? burstBand)
+        {
+            if (burstBand.HasValue)
+            {
+                bool hasTerrain = terrainFeatures != null && terrainFeatures.Length > 0;
+                bool pickTerrain = hasTerrain && UnityEngine.Random.value < 0.5f;
+                return pickTerrain ? RandomPositionNearTerrainFeature() : RandomPositionInBand(burstBand.Value);
+            }
+
+            return RandomBiasedSpawnPosition();
+        }
+
+        private Vector2 RandomBiasedSpawnPosition()
+        {
+            if (terrainFeatures != null && terrainFeatures.Length > 0 && UnityEngine.Random.value < terrainBiasChance)
+                return RandomPositionNearTerrainFeature();
+            return RandomUniformSpawnPosition();
+        }
+
+        private Vector2 RandomPositionNearTerrainFeature()
+        {
+            var feature = terrainFeatures[UnityEngine.Random.Range(0, terrainFeatures.Length)];
+            Vector2 offset = UnityEngine.Random.insideUnitCircle * feature.BiasRadius;
+            return ClampToField(feature.Position + offset);
+        }
+
+        private Vector2 RandomPositionInBand(Rect band)
+        {
+            float x = UnityEngine.Random.Range(band.xMin, band.xMax);
+            float y = UnityEngine.Random.Range(band.yMin, band.yMax);
+            return ClampToField(new Vector2(x, y));
+        }
+
+        private Vector2 RandomUniformSpawnPosition()
         {
             if (sandMask == null) return Vector2.zero;
 
@@ -65,12 +113,29 @@ namespace PickupCent.Economy
                 Mathf.Max(0f, field.y * 0.5f - edgeMargin));
             Vector2 center = sandMask.transform.position;
 
-            float x = Random.Range(-half.x, half.x);
-            float y = Random.Range(-half.y, half.y);
+            float x = UnityEngine.Random.Range(-half.x, half.x);
+            float y = UnityEngine.Random.Range(-half.y, half.y);
             return center + new Vector2(x, y);
         }
 
-        private void SpawnOne()
+        private Vector2 ClampToField(Vector2 pos)
+        {
+            if (sandMask == null) return pos;
+
+            Vector2 field = sandMask.FieldSize;
+            Vector2 center = sandMask.transform.position;
+            Vector2 half = new Vector2(
+                Mathf.Max(0f, field.x * 0.5f - edgeMargin),
+                Mathf.Max(0f, field.y * 0.5f - edgeMargin));
+
+            float x = Mathf.Clamp(pos.x, center.x - half.x, center.x + half.x);
+            float y = Mathf.Clamp(pos.y, center.y - half.y, center.y + half.y);
+            return new Vector2(x, y);
+        }
+
+        // --- 스폰 / 재보충 ---
+
+        private void SpawnOne(Rect? burstBand)
         {
             var def = PickWeighted();
             if (def == null)
@@ -81,21 +146,57 @@ namespace PickupCent.Economy
 
             var go = new GameObject("Item");
             var item = go.AddComponent<DiggableItem>();
-            item.Initialize(def, RandomSpawnPosition());
+            item.Initialize(def, PickSpawnPosition(burstBand));
             item.OnAcquired += HandleAcquired;
             item.OnDestroyedByRisk += HandleDestroyedByRisk;
             activeItems.Add(item);
+        }
+
+        /// <summary>
+        /// 아이 무리 이벤트가 지나간 뒤 호출. 지형지물 주변 + band를 합친 후보군으로,
+        /// 활성 아이템 개수가 기본치(itemCount)의 2배가 될 때까지 추가로 스폰한다.
+        /// </summary>
+        public void TriggerSpawnBurst(Rect band)
+        {
+            int target = itemCount * 2;
+            int added = 0;
+            while (activeItems.Count < target)
+            {
+                SpawnOne(band);
+                added++;
+            }
+
+            Debug.Log($"[ItemSpawner] 아이 무리 스폰 버스트 — {added}개 추가, 활성 아이템 {activeItems.Count}/{target}");
         }
 
         private void HandleAcquired(DiggableItem item)
         {
             var def = item.Definition;
             if (scoreTracker != null && def != null) scoreTracker.Add(def.value, def.itemName);
-            Respawn(item);
+            if (def != null) OnItemPickedUp?.Invoke(def);
+            ResolveItem(item);
         }
 
         private void HandleDestroyedByRisk(DiggableItem item)
         {
+            ResolveItem(item);
+        }
+
+        /// <summary>
+        /// 활성 개수가 기본치를 넘는 동안(버스트로 늘어난 여분)이면 재보충하지 않고 오브젝트를 없애서
+        /// 자연스럽게 기본치로 줄어들게 하고, 기본치 이하면 예전처럼 같은 자리에서 재배치한다.
+        /// </summary>
+        private void ResolveItem(DiggableItem item)
+        {
+            if (activeItems.Count > itemCount)
+            {
+                activeItems.Remove(item);
+                item.OnAcquired -= HandleAcquired;
+                item.OnDestroyedByRisk -= HandleDestroyedByRisk;
+                Destroy(item.gameObject);
+                return;
+            }
+
             Respawn(item);
         }
 
@@ -103,7 +204,7 @@ namespace PickupCent.Economy
         {
             var def = PickWeighted();
             if (def == null) return;
-            item.Initialize(def, RandomSpawnPosition());
+            item.Initialize(def, PickSpawnPosition(null));
         }
     }
 }
