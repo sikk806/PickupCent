@@ -41,6 +41,17 @@ namespace PickupCent.Digging
         [SerializeField] private float holeThresholdByte = 10f;
         [SerializeField, Range(0.001f, 0.2f)] private float holeSoftEdge = 0.02f;
 
+        [Header("지형 텍스처 (에셋 연결 도구가 채움 — 아직 셰이더에서 쓰이지 않는 자리만 마련된 필드)")]
+        // TODO: 실제 텍스처 파일이 연결되면, SandDisplay 셰이더를 단색(sandColor/erodedColor) 곱하기 방식에서
+        // 이 텍스처들을 샘플링해서 마스크 값 기준으로 블렌딩하는 방식으로 전환하는 작업이 별도로 필요하다.
+        // 그 전까지는 이 필드들이 채워져 있어도 표시는 지금처럼 sandColor/erodedColor 단색 그대로다.
+        [Tooltip("마른 표면 텍스처 (미사용 — 자리만 마련됨)")]
+        [SerializeField] private Texture2D sandTexture;
+        [Tooltip("젖은 표면 텍스처 (미사용 — 자리만 마련됨)")]
+        [SerializeField] private Texture2D wetTexture;
+        [Tooltip("파낸 바닥 텍스처 (미사용 — 자리만 마련됨)")]
+        [SerializeField] private Texture2D dugFloorTexture;
+
         [Header("CPU 판정용 리드백")]
         [SerializeField] private float readbackInterval = 0.08f;
         [Tooltip("D3D 등에서 AsyncGPUReadback 결과가 상하로 뒤집혀 나오는 경우 보정용. " +
@@ -74,6 +85,11 @@ namespace PickupCent.Digging
         public Vector2 FieldSize => fieldSize;
         public Texture CurrentMask => current;
 
+        // 아직 셰이더에서 쓰이지 않는 자리(위 TODO 참고). 향후 텍스처 블렌딩 작업을 위한 읽기 전용 접근자.
+        public Texture2D SandTexture => sandTexture;
+        public Texture2D WetTexture => wetTexture;
+        public Texture2D DugFloorTexture => dugFloorTexture;
+
         /// <summary>현재 장착된 도구의 강도. ToolManager가 도구 전환 시 이 값을 갈아끼운다.</summary>
         public float Strength
         {
@@ -81,7 +97,25 @@ namespace PickupCent.Digging
             set => strength = value;
         }
 
-        public float BrushRadius => brushRadius;
+        /// <summary>지반 경도. 디버그 패널 등에서 실시간 조절용.</summary>
+        public float Hardness
+        {
+            get => hardness;
+            set => hardness = value;
+        }
+
+        public float BrushRadius
+        {
+            get => brushRadius;
+            set => brushRadius = value;
+        }
+
+        /// <summary>초당 되메워짐 속도(0~255 기준). 디버그 패널 등에서 실시간 조절용.</summary>
+        public float RegenPerSecond
+        {
+            get => regenPerSecond;
+            set => regenPerSecond = value;
+        }
 
         /// <summary>파기 범위 강화. UpgradeManager가 호출 — 브러시 반경을 확장한다.</summary>
         public void AddBrushRadius(float amount)

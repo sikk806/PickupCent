@@ -24,6 +24,8 @@ namespace PickupCent.Events
         [SerializeField] private Color displayColor = new Color(0.9f, 0.55f, 0.7f);
         [Tooltip("모래 레이어(z=0)보다 카메라 쪽(음수)에 둬서 항상 위에 보이게 한다")]
         [SerializeField] private float displayZ = -0.5f;
+        [Tooltip("아트 에셋 연결 도구가 채움 — 비어있으면 단색 사각형으로 절차적 표시")]
+        [SerializeField] private Sprite artSprite;
 
         [SerializeField] private Camera targetCamera;
         [SerializeField] private ItemSpawner itemSpawner;
@@ -38,6 +40,19 @@ namespace PickupCent.Events
         public bool IsEventRunning => running;
         public float SecondsUntilNextEvent => running ? 0f : Mathf.Max(0f, intervalSeconds - timer);
 
+        // --- 디버그 패널 등에서 실시간 조절하기 위한 get/set 프로퍼티 ---
+        public float IntervalSeconds
+        {
+            get => intervalSeconds;
+            set => intervalSeconds = Mathf.Max(0f, value);
+        }
+
+        public float MoveSpeed
+        {
+            get => moveSpeed;
+            set => moveSpeed = Mathf.Max(0f, value);
+        }
+
         private void Awake()
         {
             if (targetCamera == null) targetCamera = Camera.main;
@@ -50,7 +65,7 @@ namespace PickupCent.Events
             visual = new GameObject("ChildrenSwarmVisual");
             visual.transform.SetParent(transform, false);
             visualRenderer = visual.AddComponent<SpriteRenderer>();
-            visualRenderer.sprite = ProceduralSprites.CreateSquare(4, displayColor, 1f);
+            visualRenderer.sprite = artSprite != null ? artSprite : ProceduralSprites.CreateSquare(4, displayColor, 1f);
             visualRenderer.color = Color.white;
             visual.SetActive(false);
         }

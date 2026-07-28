@@ -17,6 +17,8 @@ namespace PickupCent.EditorTools
     /// </summary>
     public static class Test6EventSetup
     {
+        private const string PrefabFolder = "Assets/_PickupCent/Prefabs";
+
         [MenuItem("PickupCent/Test6. 아이 무리 이벤트 씬 구성")]
         public static void Setup()
         {
@@ -117,7 +119,8 @@ namespace PickupCent.EditorTools
 
             var sr = go.GetComponent<SpriteRenderer>();
             if (sr == null) sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = ProceduralSprites.CreateSquare(4, color, 1f);
+            // 프리팹으로 이미 연결된 경우(에셋 연결 도구가 스프라이트를 넣어둔 경우) 덮어쓰지 않는다.
+            if (sr.sprite == null) sr.sprite = ProceduralSprites.CreateSquare(4, color, 1f);
             sr.color = Color.white;
             go.transform.localScale = new Vector3(size.x, size.y, 1f);
 
@@ -128,6 +131,19 @@ namespace PickupCent.EditorTools
             so.FindProperty("featureName").stringValue = displayName;
             so.FindProperty("biasRadius").floatValue = biasRadius;
             so.ApplyModifiedPropertiesWithoutUndo();
+
+            // 지형지물을 실제 .prefab 에셋으로 연결한다 — 아트 연결 도구가 그 프리팹의
+            // SpriteRenderer에 스프라이트를 채워 넣을 수 있게 하기 위함(structure_ 접두사).
+            if (!AssetDatabase.IsValidFolder(PrefabFolder))
+            {
+                if (!AssetDatabase.IsValidFolder("Assets/_PickupCent"))
+                    AssetDatabase.CreateFolder("Assets", "_PickupCent");
+                AssetDatabase.CreateFolder("Assets/_PickupCent", "Prefabs");
+            }
+
+            string prefabPath = $"{PrefabFolder}/{goName}.prefab";
+            var connected = PrefabUtility.SaveAsPrefabAssetAndConnect(go, prefabPath, InteractionMode.AutomatedAction);
+            feature = connected.GetComponent<TerrainFeature>();
 
             return feature;
         }

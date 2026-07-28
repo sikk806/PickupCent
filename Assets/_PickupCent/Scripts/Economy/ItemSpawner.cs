@@ -32,6 +32,22 @@ namespace PickupCent.Economy
         private readonly List<DiggableItem> activeItems = new List<DiggableItem>();
         private float totalWeight;
 
+        // --- 디버그 패널 등에서 실시간 조절하기 위한 get/set 프로퍼티 ---
+
+        /// <summary>기본 유지 개수(Max). 낮추거나 높여도 기존 아이템을 즉시 강제로 맞추진 않고,
+        /// 이후의 습득/버스트 판정부터 새 값을 사용한다.</summary>
+        public int ItemCount
+        {
+            get => itemCount;
+            set => itemCount = Mathf.Max(0, value);
+        }
+
+        public float TerrainBiasChance
+        {
+            get => terrainBiasChance;
+            set => terrainBiasChance = Mathf.Clamp01(value);
+        }
+
         private void Awake()
         {
             if (sandMask == null) sandMask = FindFirstObjectByType<SandMaskController>();

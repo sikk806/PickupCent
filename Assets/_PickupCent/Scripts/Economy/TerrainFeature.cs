@@ -13,8 +13,13 @@ namespace PickupCent.Economy
         [SerializeField] private float biasRadius = 1.2f;
 
         public string FeatureName => featureName;
-        public float BiasRadius => biasRadius;
         public Vector2 Position => transform.position;
+
+        public float BiasRadius
+        {
+            get => biasRadius;
+            set => biasRadius = value;
+        }
 
         private void OnDrawGizmosSelected()
         {

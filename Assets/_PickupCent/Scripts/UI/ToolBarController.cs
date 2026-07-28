@@ -17,6 +17,9 @@ namespace PickupCent.UI
             public ToolManager.ToolType tool;
             public Button button;
             public Image background;
+
+            [Tooltip("아트 에셋 연결 도구가 채움 — 비어있으면 background 단색 그대로 표시")]
+            public Sprite icon;
         }
 
         [SerializeField] private ToolManager toolManager;
@@ -33,6 +36,9 @@ namespace PickupCent.UI
                 if (entry?.button == null) continue;
                 var tool = entry.tool;
                 entry.button.onClick.AddListener(() => toolManager.SwitchTool(tool));
+
+                if (entry.icon != null && entry.background != null)
+                    entry.background.sprite = entry.icon;
             }
         }
 

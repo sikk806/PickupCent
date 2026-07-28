@@ -28,5 +28,8 @@ namespace PickupCent.Economy
         public Color displayColor = Color.white;
         [Tooltip("월드 단위 표시 크기(지름/한 변)")]
         public float displaySize = 1f;
+
+        [Header("아트 에셋 (에셋 연결 도구가 채움 — 비어있으면 위 도형으로 절차적 표시)")]
+        public Sprite artSprite;
     }
 }

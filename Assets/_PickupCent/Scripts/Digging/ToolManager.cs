@@ -39,11 +39,41 @@ namespace PickupCent.Digging
         private float strengthBonus;
 
         public ToolType CurrentTool => currentTool;
-        public float ShovelDestroyChance => shovelDestroyChance;
-        public float DetectorRadius => detectorRadius;
         public float StrengthBonus => strengthBonus;
         // 세 도구 모두 파기가 기본 동작이라 지금은 항상 true — 훗날 파기가 아닌 도구가 추가될 때를 대비해 남겨둠.
         public bool IsDiggingTool => true;
+
+        // --- 디버그 패널 등에서 실시간 조절하기 위한 get/set 프로퍼티 ---
+
+        public float HandStrength
+        {
+            get => handStrength;
+            set { handStrength = value; ApplyToolStrength(); }
+        }
+
+        public float ShovelStrength
+        {
+            get => shovelStrength;
+            set { shovelStrength = value; ApplyToolStrength(); }
+        }
+
+        public float ShovelDestroyChance
+        {
+            get => shovelDestroyChance;
+            set => shovelDestroyChance = Mathf.Clamp01(value);
+        }
+
+        public float DetectorRadius
+        {
+            get => detectorRadius;
+            set => detectorRadius = value;
+        }
+
+        public float DetectorDwellTime
+        {
+            get => detectorDwellTime;
+            set => detectorDwellTime = value;
+        }
 
         private void Awake()
         {

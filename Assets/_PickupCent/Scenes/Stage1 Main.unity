@@ -1434,6 +1434,60 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 403188853}
   m_CullTransparentMesh: 1
+--- !u!1 &452628540
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 452628542}
+  - component: {fileID: 452628541}
+  m_Layer: 0
+  m_Name: DebugPanel
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &452628541
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 452628540}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 195d2efaa08230f4b973c0f9158e8f9c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PickupCent.Debugging.DebugPanelController
+  toggleKey: 282
+  sandMask: {fileID: 1991588079}
+  toolManager: {fileID: 1991588084}
+  itemSpawner: {fileID: 470740783}
+  swarmEvent: {fileID: 1468750138}
+  terrainFeatures:
+  - {fileID: 1655908218}
+  - {fileID: 651636337}
+  - {fileID: 371944717}
+  upgradeManager: {fileID: 1206729246}
+--- !u!4 &452628542
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 452628540}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &470740782
 GameObject:
   m_ObjectHideFlags: 0
@@ -3247,12 +3301,15 @@ MonoBehaviour:
   - tool: 0
     button: {fileID: 862211175}
     background: {fileID: 862211176}
+    icon: {fileID: 0}
   - tool: 1
     button: {fileID: 1280277576}
     background: {fileID: 1280277577}
+    icon: {fileID: 0}
   - tool: 2
     button: {fileID: 696129119}
     background: {fileID: 696129120}
+    icon: {fileID: 0}
   selectedColor: {r: 1, g: 0.85, b: 0.3, a: 1}
   unselectedColor: {r: 1, g: 1, b: 1, a: 0.55}
 --- !u!1 &1280277574
@@ -3657,6 +3714,7 @@ MonoBehaviour:
   bandHeight: 1.5
   displayColor: {r: 0.9, g: 0.55, b: 0.7, a: 1}
   displayZ: -0.5
+  artSprite: {fileID: 0}
   targetCamera: {fileID: 519420031}
   itemSpawner: {fileID: 470740783}
 --- !u!4 &1468750139
@@ -5190,6 +5248,9 @@ MonoBehaviour:
   erodedColor: {r: 0.35, g: 0.28, b: 0.16, a: 1}
   holeThresholdByte: 10
   holeSoftEdge: 0.1005
+  sandTexture: {fileID: 0}
+  wetTexture: {fileID: 0}
+  dugFloorTexture: {fileID: 0}
   readbackInterval: 0.08
   readbackFlipY: 0
   logFormulaOnChange: 1
@@ -5986,3 +6047,4 @@ SceneRoots:
   - {fileID: 1655908220}
   - {fileID: 651636339}
   - {fileID: 1468750139}
+  - {fileID: 452628542}

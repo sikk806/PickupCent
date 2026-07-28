@@ -105,6 +105,14 @@ namespace PickupCent.Digging
         private void ApplyVisual()
         {
             if (sr == null || itemDefinition == null) return;
+
+            if (itemDefinition.artSprite != null)
+            {
+                sr.sprite = itemDefinition.artSprite;
+                sr.color = Color.white;
+                return;
+            }
+
             sr.sprite = itemDefinition.shape == ItemDefinition.ItemShape.Circle
                 ? ProceduralSprites.CreateCircle(64, itemDefinition.displayColor, itemDefinition.displaySize)
                 : ProceduralSprites.CreateSquare(64, itemDefinition.displayColor, itemDefinition.displaySize);
