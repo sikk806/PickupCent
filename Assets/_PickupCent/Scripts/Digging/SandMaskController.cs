@@ -41,16 +41,15 @@ namespace PickupCent.Digging
         [SerializeField] private float holeThresholdByte = 10f;
         [SerializeField, Range(0.001f, 0.2f)] private float holeSoftEdge = 0.02f;
 
-        [Header("지형 텍스처 (에셋 연결 도구가 채움 — 아직 셰이더에서 쓰이지 않는 자리만 마련된 필드)")]
-        // TODO: 실제 텍스처 파일이 연결되면, SandDisplay 셰이더를 단색(sandColor/erodedColor) 곱하기 방식에서
-        // 이 텍스처들을 샘플링해서 마스크 값 기준으로 블렌딩하는 방식으로 전환하는 작업이 별도로 필요하다.
-        // 그 전까지는 이 필드들이 채워져 있어도 표시는 지금처럼 sandColor/erodedColor 단색 그대로다.
-        [Tooltip("마른 표면 텍스처 (미사용 — 자리만 마련됨)")]
+        [Header("지형 텍스처 (셋 다 있으면 텍스처 블렌딩, 하나라도 비어있으면 위 sandColor/erodedColor 단색으로 폴백)")]
+        [Tooltip("마른 표면 텍스처")]
         [SerializeField] private Texture2D sandTexture;
-        [Tooltip("젖은 표면 텍스처 (미사용 — 자리만 마련됨)")]
+        [Tooltip("젖은 표면 텍스처 (살짝 건드린 곳에 마른 표면과 섞여 보임)")]
         [SerializeField] private Texture2D wetTexture;
-        [Tooltip("파낸 바닥 텍스처 (미사용 — 자리만 마련됨)")]
+        [Tooltip("파낸 바닥 텍스처 (확실히 뚫린 곳에 드러남)")]
         [SerializeField] private Texture2D dugFloorTexture;
+        [Tooltip("지형 텍스처 반복(타일링) 배율. 필드 전체에 이 배율만큼 텍스처가 반복된다")]
+        [SerializeField] private float textureTiling = 4f;
 
         [Header("CPU 판정용 리드백")]
         [SerializeField] private float readbackInterval = 0.08f;
@@ -65,6 +64,12 @@ namespace PickupCent.Digging
         private RenderTexture current, other;
         private Material decayMat, brushMat, displayMat;
         private MeshRenderer mr;
+
+        // 완전히 뚫린 자리에서 카메라 배경 대신 항상 보이는 불투명 배경 레이어 (아이템보다도 뒤에 위치).
+        private const float DugFloorZOffset = 1f;
+        private MeshRenderer dugFloorRenderer;
+        private Material dugFloorMat;
+        private Texture2D fallbackDugFloorTex;
 
         private float readbackTimer;
         private bool readbackPending;
@@ -85,10 +90,12 @@ namespace PickupCent.Digging
         public Vector2 FieldSize => fieldSize;
         public Texture CurrentMask => current;
 
-        // 아직 셰이더에서 쓰이지 않는 자리(위 TODO 참고). 향후 텍스처 블렌딩 작업을 위한 읽기 전용 접근자.
         public Texture2D SandTexture => sandTexture;
         public Texture2D WetTexture => wetTexture;
         public Texture2D DugFloorTexture => dugFloorTexture;
+
+        /// <summary>셋 다 연결돼 있어야 텍스처 블렌딩 모드로 표시한다 — 하나라도 비어있으면 단색 폴백.</summary>
+        private bool UseTextures => sandTexture != null && wetTexture != null && dugFloorTexture != null;
 
         /// <summary>현재 장착된 도구의 강도. ToolManager가 도구 전환 시 이 값을 갈아끼운다.</summary>
         public float Strength
@@ -129,9 +136,73 @@ namespace PickupCent.Digging
             mr = GetComponent<MeshRenderer>();
             SetupTextures();
             SetupMaterials();
+            EnsureTerrainTextureWrapModes();
+            SetupDugFloorBackground();
+            LogDugFloorTextureInfo();
             lastStrength = strength;
             lastHardness = hardness;
             LogFormula();
+        }
+
+        /// <summary>지형 텍스처는 타일링돼야 하므로, 임포트 설정과 무관하게 Wrap Mode를 Repeat로 강제한다.</summary>
+        private void EnsureTerrainTextureWrapModes()
+        {
+            if (sandTexture != null) sandTexture.wrapMode = TextureWrapMode.Repeat;
+            if (wetTexture != null) wetTexture.wrapMode = TextureWrapMode.Repeat;
+            if (dugFloorTexture != null) dugFloorTexture.wrapMode = TextureWrapMode.Repeat;
+        }
+
+        /// <summary>
+        /// 완전히 뚫린 자리(모래 알파=0)에서 카메라 배경색이 그대로 비쳐 보이던 문제 수정용 —
+        /// 모래 레이어보다 뒤(아이템보다도 뒤)에 항상 깔려있는 불투명 배경 레이어를 만든다.
+        /// 아이템이 있으면 아이템이 이 배경 위에 보이고, 없으면 이 배경(파낸 바닥 텍스처)이 그대로 보인다.
+        /// </summary>
+        private void SetupDugFloorBackground()
+        {
+            var bgGO = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            bgGO.name = "DugFloorBackground";
+            var col = bgGO.GetComponent<Collider>();
+            if (col != null) Destroy(col);
+
+            bgGO.transform.SetParent(transform, false);
+            // 부모(SandLayer)의 localScale이 이미 fieldSize이므로, 이 자식은 scale=1이면 그대로 필드 전체를 덮는다.
+            bgGO.transform.localPosition = new Vector3(0f, 0f, DugFloorZOffset);
+            bgGO.transform.localScale = Vector3.one;
+
+            dugFloorRenderer = bgGO.GetComponent<MeshRenderer>();
+            dugFloorMat = new Material(Shader.Find("Unlit/Texture"));
+            dugFloorRenderer.material = dugFloorMat;
+
+            RefreshDugFloorBackground();
+        }
+
+        private void RefreshDugFloorBackground()
+        {
+            if (dugFloorMat == null) return;
+
+            if (dugFloorTexture != null)
+            {
+                dugFloorMat.mainTexture = dugFloorTexture;
+                dugFloorMat.mainTextureScale = new Vector2(textureTiling, textureTiling);
+            }
+            else
+            {
+                if (fallbackDugFloorTex == null) fallbackDugFloorTex = new Texture2D(1, 1);
+                fallbackDugFloorTex.SetPixel(0, 0, erodedColor);
+                fallbackDugFloorTex.Apply();
+                dugFloorMat.mainTexture = fallbackDugFloorTex;
+                dugFloorMat.mainTextureScale = Vector2.one;
+            }
+        }
+
+        private void LogDugFloorTextureInfo()
+        {
+#if UNITY_EDITOR
+            string path = dugFloorTexture != null ? UnityEditor.AssetDatabase.GetAssetPath(dugFloorTexture) : "(연결 안 됨)";
+            Debug.Log($"[SandMask] Dug Floor Texture 연결 확인 — 이름: {(dugFloorTexture != null ? dugFloorTexture.name : "null")}, 경로: {path}");
+#else
+            Debug.Log($"[SandMask] Dug Floor Texture 연결 확인 — 이름: {(dugFloorTexture != null ? dugFloorTexture.name : "null")}");
+#endif
         }
 
         private void SetupTextures()
@@ -206,6 +277,7 @@ namespace PickupCent.Digging
             other = (current == rtA) ? rtB : rtA;
 
             UpdateDisplayMaterial();
+            RefreshDugFloorBackground();
             CheckFormulaChanged();
 
             // 2) 주기적 CPU 리드백 요청 (체크포인트 판정용)
@@ -224,6 +296,16 @@ namespace PickupCent.Digging
             displayMat.SetColor("_ErodedColor", erodedColor);
             displayMat.SetFloat("_HoleThreshold", HoleThresholdNormalized);
             displayMat.SetFloat("_SoftEdge", holeSoftEdge);
+
+            bool useTextures = UseTextures;
+            displayMat.SetFloat("_UseTextures", useTextures ? 1f : 0f);
+            if (useTextures)
+            {
+                displayMat.SetTexture("_SandTex", sandTexture);
+                displayMat.SetTexture("_WetTex", wetTexture);
+                displayMat.SetTexture("_DugFloorTex", dugFloorTexture);
+                displayMat.SetFloat("_TextureTiling", textureTiling);
+            }
         }
 
         private void CheckFormulaChanged()
@@ -333,6 +415,7 @@ namespace PickupCent.Digging
         {
             if (rtA != null) rtA.Release();
             if (rtB != null) rtB.Release();
+            if (fallbackDugFloorTex != null) Destroy(fallbackDugFloorTex);
         }
 
         private void OnDrawGizmosSelected()

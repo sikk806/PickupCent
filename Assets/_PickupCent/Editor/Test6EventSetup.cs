@@ -1,11 +1,9 @@
 using PickupCent.Common;
 using PickupCent.Economy;
 using PickupCent.Events;
-using PickupCent.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace PickupCent.EditorTools
 {
@@ -36,8 +34,6 @@ namespace PickupCent.EditorTools
                 return;
             }
 
-            var font = GetDefaultFont();
-
             // --- 지형지물 3종 ---
             var slide = CreateTerrainFeature("Slide", "미끄럼틀", new Vector3(-2.5f, 2.5f, -0.5f),
                 new Vector2(1.2f, 1.8f), new Color(0.95f, 0.55f, 0.2f), 1.2f);
@@ -65,44 +61,10 @@ namespace PickupCent.EditorTools
             SetRef(swarmSo, "itemSpawner", itemSpawner);
             swarmSo.ApplyModifiedPropertiesWithoutUndo();
 
-            // --- 카운트다운 UI (Test5가 실행돼 있을 때만) ---
-            var canvasGO = GameObject.Find("UICanvas");
-            if (canvasGO != null)
-            {
-                var textGO = GameObject.Find("SwarmCountdownText");
-                if (textGO == null)
-                {
-                    textGO = new GameObject("SwarmCountdownText", typeof(RectTransform));
-                    textGO.transform.SetParent(canvasGO.transform, false);
-                }
-
-                var text = textGO.GetComponent<Text>();
-                if (text == null) text = textGO.AddComponent<Text>();
-                text.font = font;
-                text.fontSize = 18;
-                text.alignment = TextAnchor.UpperLeft;
-                text.color = Color.white;
-                text.text = "다음 아이 무리: -";
-
-                var rt = textGO.GetComponent<RectTransform>();
-                rt.anchorMin = new Vector2(0, 1);
-                rt.anchorMax = new Vector2(0, 1);
-                rt.pivot = new Vector2(0, 1);
-                rt.anchoredPosition = new Vector2(20, -68);
-                rt.sizeDelta = new Vector2(280, 30);
-
-                var countdown = textGO.GetComponent<SwarmEventCountdownText>();
-                if (countdown == null) countdown = textGO.AddComponent<SwarmEventCountdownText>();
-                var countdownSo = new SerializedObject(countdown);
-                SetRef(countdownSo, "swarmEvent", swarmEvent);
-                SetRef(countdownSo, "text", text);
-                countdownSo.ApplyModifiedPropertiesWithoutUndo();
-            }
-            else
-            {
-                Debug.LogWarning("[Test6EventSetup] UICanvas가 없어 카운트다운 텍스트는 건너뛰었습니다. " +
-                                  "표시하려면 먼저 Test5를 실행한 뒤 이 메뉴를 다시 실행하세요.");
-            }
+            // 예전엔 여기서 SwarmCountdownText + SwarmEventCountdownText를 직접 배치했지만,
+            // 그 카운트다운 표시는 이제 HudController가 런타임에 상단 HUD 알약("다음 이벤트")으로
+            // 스스로 만들어 보여준다(SwarmEventCountdownText.cs는 그때 삭제됨) — 에디터에서 따로
+            // 만들어 줄 UI가 없으므로 이 메뉴는 지형지물/ChildrenSwarmEvent 배치만 담당한다.
 
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             Debug.Log("[Test6EventSetup] 씬 구성 완료: 지형지물 3개 + ChildrenSwarmEvent 배치됨. " +
@@ -152,13 +114,6 @@ namespace PickupCent.EditorTools
         {
             var prop = so.FindProperty(propertyName);
             if (prop != null) prop.objectReferenceValue = value;
-        }
-
-        private static Font GetDefaultFont()
-        {
-            var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            if (font == null) font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            return font;
         }
     }
 }

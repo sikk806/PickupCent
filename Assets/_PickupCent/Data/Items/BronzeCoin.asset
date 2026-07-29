@@ -19,3 +19,4 @@ MonoBehaviour:
   shape: 0
   displayColor: {r: 0.72, g: 0.45, b: 0.2, a: 1}
   displaySize: 0.9
+  artSprite: {fileID: 21300000, guid: 5eb77c2f25c1c3545af5df28016fc8a5, type: 3}

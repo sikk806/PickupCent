@@ -1,27 +1,123 @@
+using PickupCent.Common;
 using PickupCent.Upgrades;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace PickupCent.UI
 {
-    /// <summary>상점 패널 안의 강화 한 줄 — 이름/레벨/다음 비용/구매 버튼을 표시하고 갱신한다.</summary>
+    /// <summary>
+    /// 상점 패널 안의 강화 한 줄 — 스타일 가이드 4-4의 목록 항목(.list-item) 룩으로 스스로 UI를 만든다.
+    /// 예전엔 씬에 미리 배치된 후 definition/upgradeManager를 인스펙터로 연결했지만(그때 발견한
+    /// 델리게이트 직렬화 버그 때문에 필드 방식으로 바꿨던 것), 이번엔 ShopPanelController가 런타임에
+    /// Instantiate 없이 곧바로 GameObject를 만들고 Setup()을 호출하는 방식이라 애초에 직렬화가
+    /// 필요 없다 — Setup 호출 시점에 바로 시각 요소까지 전부 구성한다.
+    /// </summary>
     public class ShopRowView : MonoBehaviour
     {
-        [SerializeField] private UpgradeDefinition definition;
-        [SerializeField] private UpgradeManager upgradeManager;
+        private UpgradeDefinition definition;
+        private UpgradeManager upgradeManager;
 
-        [SerializeField] private Text nameText;
-        [SerializeField] private Text levelText;
-        [SerializeField] private Text costText;
-        [SerializeField] private Button buyButton;
+        private Text levelText;
+        private Text costText;
+        private Button buyButton;
 
         public UpgradeDefinition Definition => definition;
 
-        private void Awake()
+        public void Setup(Transform parent, UpgradeDefinition def, UpgradeManager manager)
         {
-            if (upgradeManager == null) upgradeManager = FindFirstObjectByType<UpgradeManager>();
-            if (nameText != null) nameText.text = definition != null ? definition.upgradeName : "-";
-            if (buyButton != null)
+            definition = def;
+            upgradeManager = manager;
+            transform.SetParent(parent, false);
+            BuildUI();
+            Refresh(0);
+        }
+
+        private void BuildUI()
+        {
+            gameObject.AddComponent<LayoutElement>().preferredHeight = 52f;
+
+            var bg = gameObject.AddComponent<Image>();
+            bg.sprite = ProceduralSprites.CreateRoundedRectSliced(48, 10f, PickupCentPalette.ListItemBg);
+            bg.type = Image.Type.Sliced;
+
+            var hlg = gameObject.AddComponent<HorizontalLayoutGroup>();
+            hlg.padding = new RectOffset(10, 10, 6, 6);
+            hlg.spacing = 8f;
+            hlg.childAlignment = TextAnchor.MiddleLeft;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = true;
+
+            var infoGO = new GameObject("Info", typeof(RectTransform));
+            infoGO.transform.SetParent(transform, false);
+            infoGO.AddComponent<LayoutElement>().flexibleWidth = 1;
+            var infoVlg = infoGO.AddComponent<VerticalLayoutGroup>();
+            infoVlg.spacing = 2f;
+            infoVlg.childAlignment = TextAnchor.MiddleLeft;
+            infoVlg.childControlWidth = true;
+            infoVlg.childControlHeight = true;
+            infoVlg.childForceExpandWidth = true;
+            infoVlg.childForceExpandHeight = false;
+
+            var nameGO = new GameObject("Name", typeof(RectTransform));
+            nameGO.transform.SetParent(infoGO.transform, false);
+            var nameText = nameGO.AddComponent<Text>();
+            nameText.font = PickupCentFonts.Default;
+            nameText.text = definition != null ? definition.upgradeName : "-";
+            nameText.color = PickupCentPalette.Cream;
+            nameText.fontSize = 15;
+            nameText.fontStyle = FontStyle.Bold;
+            nameText.alignment = TextAnchor.MiddleLeft;
+            nameGO.AddComponent<LayoutElement>().preferredHeight = 20f;
+
+            var levelGO = new GameObject("Level", typeof(RectTransform));
+            levelGO.transform.SetParent(infoGO.transform, false);
+            levelText = levelGO.AddComponent<Text>();
+            levelText.font = PickupCentFonts.Default;
+            levelText.color = new Color(1f, 1f, 1f, 0.6f);
+            levelText.fontSize = 12;
+            levelText.alignment = TextAnchor.MiddleLeft;
+            levelGO.AddComponent<LayoutElement>().preferredHeight = 16f;
+
+            var costGO = new GameObject("Cost", typeof(RectTransform));
+            costGO.transform.SetParent(transform, false);
+            costText = costGO.AddComponent<Text>();
+            costText.font = PickupCentFonts.Title;
+            costText.fontStyle = FontStyle.Bold;
+            costText.color = PickupCentPalette.GoldBright;
+            costText.fontSize = 15;
+            costText.alignment = TextAnchor.MiddleRight;
+            costGO.AddComponent<LayoutElement>().preferredWidth = 56f;
+
+            var normalSprite = ProceduralSprites.CreateGradientButtonSliced(40, 10f,
+                PickupCentPalette.Gold, PickupCentPalette.WoodLight, 3f, PickupCentPalette.ButtonBottomBorder);
+            var pressedSprite = ProceduralSprites.CreateGradientButtonSliced(40, 10f,
+                PickupCentPalette.Gold, PickupCentPalette.WoodLight, 1f, PickupCentPalette.ButtonBottomBorder);
+
+            var buySlotGO = new GameObject("BuySlot", typeof(RectTransform));
+            buySlotGO.transform.SetParent(transform, false);
+            buySlotGO.AddComponent<LayoutElement>().preferredWidth = 56f;
+
+            var buyVisual = UICanvasUtility.CreatePressableSurface(buySlotGO.transform, normalSprite, pressedSprite,
+                out buyButton, out _);
+
+            var buyLabelGO = new GameObject("Label", typeof(RectTransform));
+            buyLabelGO.transform.SetParent(buyVisual.transform, false);
+            var buyLabelRt = buyLabelGO.GetComponent<RectTransform>();
+            buyLabelRt.anchorMin = Vector2.zero;
+            buyLabelRt.anchorMax = Vector2.one;
+            buyLabelRt.offsetMin = Vector2.zero;
+            buyLabelRt.offsetMax = Vector2.zero;
+            var buyLabel = buyLabelGO.AddComponent<Text>();
+            buyLabel.font = PickupCentFonts.Default;
+            buyLabel.text = "구매";
+            buyLabel.color = PickupCentPalette.Ink;
+            buyLabel.fontStyle = FontStyle.Bold;
+            buyLabel.fontSize = 13;
+            buyLabel.alignment = TextAnchor.MiddleCenter;
+
+            if (upgradeManager != null && definition != null)
                 buyButton.onClick.AddListener(() => upgradeManager.TryPurchase(definition));
         }
 

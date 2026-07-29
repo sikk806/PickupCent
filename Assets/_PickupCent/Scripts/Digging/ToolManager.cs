@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace PickupCent.Digging
@@ -31,6 +32,9 @@ namespace PickupCent.Digging
 
         [SerializeField] private SandMaskController sandMask;
         [SerializeField] private Camera targetCamera;
+
+        /// <summary>실제로 도구가 바뀔 때(초기화 시점 제외) 발생 — 사운드 등 알림용.</summary>
+        public event Action<ToolType> OnToolSwitched;
 
         private ToolType currentTool = ToolType.Hand;
 
@@ -99,6 +103,7 @@ namespace PickupCent.Digging
             currentTool = tool;
             ApplyToolStrength();
             LogToolChanged();
+            OnToolSwitched?.Invoke(currentTool);
         }
 
         private void ApplyToolStrength()

@@ -1,13 +1,17 @@
+using System;
 using PickupCent.Common;
+using PickupCent.Digging;
 using PickupCent.Economy;
 using UnityEngine;
 
 namespace PickupCent.Events
 {
     /// <summary>
-    /// 일정 주기로 아이 무리를 대표하는 오브젝트 하나가 화면 오른쪽 밖에서 등장해 왼쪽 밖으로
+    /// 일정 주기로 아이 무리를 대표하는 오브젝트 하나가 맵 오른쪽 밖에서 등장해 왼쪽 밖으로
     /// 빠져나갈 때까지 가로로 이동한다. 지나간 영역(가로 밴드 = 오브젝트 높이 두께 x 이동한 전체 구간)을
     /// 기록해서, 다 지나가면 ItemSpawner.TriggerSpawnBurst()를 호출해 스폰 버스트를 일으킨다.
+    /// 이동 범위는 화면(카메라 뷰포트)이 아니라 SandMaskController.FieldSize(맵 전체 크기) 기준이다 —
+    /// 맵이 화면보다 커진 뒤에도 카메라가 어디를 보고 있든 맵 전체를 가로지른다.
     /// </summary>
     [DefaultExecutionOrder(50)]
     public class ChildrenSwarmEvent : MonoBehaviour
@@ -27,7 +31,7 @@ namespace PickupCent.Events
         [Tooltip("아트 에셋 연결 도구가 채움 — 비어있으면 단색 사각형으로 절차적 표시")]
         [SerializeField] private Sprite artSprite;
 
-        [SerializeField] private Camera targetCamera;
+        [SerializeField] private SandMaskController sandMask;
         [SerializeField] private ItemSpawner itemSpawner;
 
         private float timer;
@@ -38,6 +42,9 @@ namespace PickupCent.Events
         private float bandCenterY;
 
         public bool IsEventRunning => running;
+
+        /// <summary>아이 무리 이벤트가 시작될 때(등장) 발생 — 사운드 등 알림용.</summary>
+        public event Action OnSwarmStarted;
         public float SecondsUntilNextEvent => running ? 0f : Mathf.Max(0f, intervalSeconds - timer);
 
         // --- 디버그 패널 등에서 실시간 조절하기 위한 get/set 프로퍼티 ---
@@ -55,7 +62,7 @@ namespace PickupCent.Events
 
         private void Awake()
         {
-            if (targetCamera == null) targetCamera = Camera.main;
+            if (sandMask == null) sandMask = FindFirstObjectByType<SandMaskController>();
             if (itemSpawner == null) itemSpawner = FindFirstObjectByType<ItemSpawner>();
             CreateVisual();
         }
@@ -88,23 +95,26 @@ namespace PickupCent.Events
 
         private void StartEvent()
         {
-            if (targetCamera == null)
+            if (sandMask == null)
             {
-                Debug.LogWarning("[ChildrenSwarmEvent] 카메라가 없어 이벤트를 시작할 수 없습니다.");
+                Debug.LogWarning("[ChildrenSwarmEvent] SandMaskController가 없어 이벤트를 시작할 수 없습니다.");
                 return;
             }
 
             running = true;
 
-            float screenTop = ScreenWorldY(1f);
-            float screenBottom = ScreenWorldY(0f);
-            float halfH = bandHeight * 0.5f;
-            float yMin = screenBottom + halfH;
-            float yMax = screenTop - halfH;
-            bandCenterY = yMin <= yMax ? Random.Range(yMin, yMax) : (screenTop + screenBottom) * 0.5f;
+            Vector2 field = sandMask.FieldSize;
+            Vector2 fieldCenter = sandMask.transform.position;
+            float fieldTop = fieldCenter.y + field.y * 0.5f;
+            float fieldBottom = fieldCenter.y - field.y * 0.5f;
+            float fieldRight = fieldCenter.x + field.x * 0.5f;
 
-            float screenRight = ScreenWorldX(1f);
-            float startX = screenRight + bandWidth * 0.5f + 0.1f;
+            float halfH = bandHeight * 0.5f;
+            float yMin = fieldBottom + halfH;
+            float yMax = fieldTop - halfH;
+            bandCenterY = yMin <= yMax ? UnityEngine.Random.Range(yMin, yMax) : (fieldTop + fieldBottom) * 0.5f;
+
+            float startX = fieldRight + bandWidth * 0.5f + 0.1f;
 
             visual.transform.localScale = new Vector3(bandWidth, bandHeight, 1f);
             visual.transform.position = new Vector3(startX, bandCenterY, displayZ);
@@ -114,6 +124,7 @@ namespace PickupCent.Events
             maxX = startX;
 
             Debug.Log($"[ChildrenSwarmEvent] 아이 무리 등장 (Y={bandCenterY:F2})");
+            OnSwarmStarted?.Invoke();
         }
 
         private void MoveStep()
@@ -125,8 +136,9 @@ namespace PickupCent.Events
             minX = Mathf.Min(minX, pos.x);
             maxX = Mathf.Max(maxX, pos.x);
 
-            float screenLeft = ScreenWorldX(0f);
-            float exitX = screenLeft - bandWidth * 0.5f - 0.1f;
+            Vector2 fieldCenter = sandMask.transform.position;
+            float fieldLeft = fieldCenter.x - sandMask.FieldSize.x * 0.5f;
+            float exitX = fieldLeft - bandWidth * 0.5f - 0.1f;
             if (pos.x <= exitX) FinishEvent();
         }
 
@@ -141,18 +153,6 @@ namespace PickupCent.Events
 
             Debug.Log("[ChildrenSwarmEvent] 아이 무리 퇴장 — 스폰 버스트 실행");
             if (itemSpawner != null) itemSpawner.TriggerSpawnBurst(band);
-        }
-
-        private float ScreenWorldX(float viewportX)
-        {
-            float dist = Mathf.Abs(targetCamera.transform.position.z - displayZ);
-            return targetCamera.ViewportToWorldPoint(new Vector3(viewportX, 0.5f, dist)).x;
-        }
-
-        private float ScreenWorldY(float viewportY)
-        {
-            float dist = Mathf.Abs(targetCamera.transform.position.z - displayZ);
-            return targetCamera.ViewportToWorldPoint(new Vector3(0.5f, viewportY, dist)).y;
         }
     }
 }

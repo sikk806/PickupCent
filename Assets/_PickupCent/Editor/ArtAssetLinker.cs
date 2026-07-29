@@ -34,6 +34,9 @@ namespace PickupCent.EditorTools
         private const string ItemDataFolder = "Assets/_PickupCent/Data/Items";
         private const string PrefabFolder = "Assets/_PickupCent/Prefabs";
 
+        /// <summary>item/tool/sprite 폴더의 모든 스프라이트에 강제 적용하는 PPU. StageArtTexturePostprocessor도 이 값을 참조한다.</summary>
+        public const float TargetSpritePixelsPerUnit = 100f;
+
         private static readonly string[] TextureExtensions = { ".png", ".jpg", ".jpeg", ".tga", ".psd" };
 
         [MenuItem("PickupCent/에셋 연결 도구 (Stage1)")]
@@ -302,6 +305,13 @@ namespace PickupCent.EditorTools
             if (importer.spriteImportMode != SpriteImportMode.Single)
             {
                 importer.spriteImportMode = SpriteImportMode.Single;
+                changed = true;
+            }
+            // Stage1/item(및 다른 아이템 폴더)의 모든 스프라이트는 PPU를 통일한다 — 하드코딩 없이
+            // TargetSpritePixelsPerUnit 상수 하나로만 관리(StageArtTexturePostprocessor와 공유).
+            if (!Mathf.Approximately(importer.spritePixelsPerUnit, TargetSpritePixelsPerUnit))
+            {
+                importer.spritePixelsPerUnit = TargetSpritePixelsPerUnit;
                 changed = true;
             }
             changed |= ApplyCommonImportSettings(importer);

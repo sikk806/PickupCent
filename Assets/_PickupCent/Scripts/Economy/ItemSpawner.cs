@@ -16,6 +16,11 @@ namespace PickupCent.Economy
     {
         /// <summary>정상 습득(점수 지급)될 때마다 발생. UI 습득 피드백 텍스트가 구독한다.</summary>
         public event Action<ItemDefinition> OnItemPickedUp;
+        /// <summary>새 DiggableItem 오브젝트가 생성될 때(최초 채우기·버스트 추가 스폰 포함) 발생 —
+        /// 사운드 매니저가 그 아이템 인스턴스의 OnDestroyedByRisk/OnSpotted를 구독하는 데 쓴다.</summary>
+        public event Action<DiggableItem> OnItemSpawned;
+        /// <summary>스폰 버스트로 아이템이 실제로 1개 이상 추가됐을 때 발생 — 사운드 등 알림용.</summary>
+        public event Action OnSpawnBurst;
 
         [SerializeField] private SandMaskController sandMask;
         [SerializeField] private ScoreTracker scoreTracker;
@@ -166,6 +171,7 @@ namespace PickupCent.Economy
             item.OnAcquired += HandleAcquired;
             item.OnDestroyedByRisk += HandleDestroyedByRisk;
             activeItems.Add(item);
+            OnItemSpawned?.Invoke(item);
         }
 
         /// <summary>
@@ -183,6 +189,7 @@ namespace PickupCent.Economy
             }
 
             Debug.Log($"[ItemSpawner] 아이 무리 스폰 버스트 — {added}개 추가, 활성 아이템 {activeItems.Count}/{target}");
+            if (added > 0) OnSpawnBurst?.Invoke();
         }
 
         private void HandleAcquired(DiggableItem item)

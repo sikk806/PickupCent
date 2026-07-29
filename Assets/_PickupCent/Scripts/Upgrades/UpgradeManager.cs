@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using PickupCent.Digging;
 using PickupCent.Economy;
@@ -28,6 +29,11 @@ namespace PickupCent.Upgrades
 
         private readonly Dictionary<UpgradeDefinition, int> levels = new Dictionary<UpgradeDefinition, int>();
 
+        /// <summary>구매 성공 시 발생 — 사운드 등 알림용.</summary>
+        public event Action<UpgradeDefinition> OnPurchaseSucceeded;
+        /// <summary>구매 실패 시 발생(최대 레벨이든 점수 부족이든 둘 다) — 사운드 등 알림용.</summary>
+        public event Action<UpgradeDefinition> OnPurchaseFailed;
+
         private void Awake()
         {
             if (scoreTracker == null) scoreTracker = FindFirstObjectByType<ScoreTracker>();
@@ -50,6 +56,7 @@ namespace PickupCent.Upgrades
             if (level >= def.maxLevel)
             {
                 Debug.Log($"[Upgrade] 구매 실패: {def.upgradeName} 이미 최대 레벨(Lv.{def.maxLevel})");
+                OnPurchaseFailed?.Invoke(def);
                 return;
             }
 
@@ -57,6 +64,7 @@ namespace PickupCent.Upgrades
             if (scoreTracker.Score < cost)
             {
                 Debug.Log($"[Upgrade] 구매 실패: 점수 부족(필요 {cost}, 보유 {scoreTracker.Score})");
+                OnPurchaseFailed?.Invoke(def);
                 return;
             }
 
@@ -66,6 +74,7 @@ namespace PickupCent.Upgrades
             ApplyEffect(def);
 
             Debug.Log($"[Upgrade] 구매 성공: {def.upgradeName} Lv.{level} (남은 점수: {scoreTracker.Score})");
+            OnPurchaseSucceeded?.Invoke(def);
         }
 
         private void ApplyEffect(UpgradeDefinition def)

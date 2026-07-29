@@ -26,10 +26,15 @@ namespace PickupCent.Economy
         [Header("표시 (아트 에셋 없이 기본 도형으로 구분)")]
         public ItemShape shape = ItemShape.Circle;
         public Color displayColor = Color.white;
-        [Tooltip("월드 단위 표시 크기(지름/한 변)")]
+        [Tooltip(
+            "월드 단위 표시 크기(지름/한 변). artSprite가 없는 procedural 아이템에만 적용된다. " +
+            "artSprite가 있으면 이 값은 무시되고, 실제 크기는 그 스프라이트의 임포트 설정(Pixels Per Unit)이 결정한다.")]
         public float displaySize = 1f;
 
         [Header("아트 에셋 (에셋 연결 도구가 채움 — 비어있으면 위 도형으로 절차적 표시)")]
+        [Tooltip(
+            "실제 아트 스프라이트. 있으면 스케일 보정 없이(scale=1) Pixels Per Unit 기준 원본 크기로 렌더링되며, " +
+            "displaySize는 쓰이지 않는다.")]
         public Sprite artSprite;
     }
 }

@@ -23,8 +23,14 @@ namespace PickupCent.Digging
         [SerializeField] private Color spottedMarkerColor = new Color(1f, 0.95f, 0.2f);
         [SerializeField] private float spottedMarkerSize = 0.3f;
 
-        [Tooltip("체크포인트 3x3 격자가 퍼지는 반경(로컬 단위)")]
+        [Tooltip(
+            "체크포인트 3x3 격자가 퍼지는 반경(로컬 단위). itemDefinition이 있으면 자동 계산되어 이 값을 " +
+            "덮어쓴다(Initialize()/Awake()/OnValidate() 시점): artSprite가 있으면 실제 렌더링 크기(sprite.rect / " +
+            "sprite.pixelsPerUnit) * checkRadiusRatio, artSprite가 없으면(procedural) displaySize * checkRadiusRatio. " +
+            "itemDefinition이 없는 경우(하위 호환용 고정 더미)에는 이 값이 그대로 쓰인다.")]
         [SerializeField] private float checkRadius = 0.4f;
+        [Tooltip("checkRadius 계산(위 참고)에 곱해지는 비율")]
+        [SerializeField, Range(0.05f, 1f)] private float checkRadiusRatio = 0.34f;
         [SerializeField, Range(0f, 1f)] private float pickupRatio = 0.75f;
         [SerializeField] private float checkInterval = 0.15f;
         [SerializeField] private bool verboseLogging = true;
@@ -44,6 +50,8 @@ namespace PickupCent.Digging
         public event Action<DiggableItem> OnAcquired;
         /// <summary>삽 파괴 리스크로 소실됐을 때 발생.</summary>
         public event Action<DiggableItem> OnDestroyedByRisk;
+        /// <summary>금속탐지기에 발견 표시(spotted)되는 순간 1회 발생 — 사운드 등 알림용, 습득과는 무관.</summary>
+        public event Action<DiggableItem> OnSpotted;
 
         public ItemDefinition Definition => itemDefinition;
 
@@ -59,7 +67,11 @@ namespace PickupCent.Digging
 
         private string DisplayName => itemDefinition != null ? itemDefinition.itemName : name;
 
-        private void OnValidate() => GenerateOffsets();
+        private void OnValidate()
+        {
+            RecalculateCheckRadius();
+            GenerateOffsets();
+        }
 
         private void Awake()
         {
@@ -67,6 +79,7 @@ namespace PickupCent.Digging
             if (sandMask == null) sandMask = FindFirstObjectByType<SandMaskController>();
             if (toolManager == null) toolManager = FindFirstObjectByType<ToolManager>();
             EnsureSpottedMarker();
+            RecalculateCheckRadius();
             GenerateOffsets();
             if (itemDefinition != null) ApplyVisual();
         }
@@ -84,7 +97,37 @@ namespace PickupCent.Digging
             HideSpottedMarker();
 
             if (sr == null) sr = GetComponent<SpriteRenderer>();
+            RecalculateCheckRadius();
+            GenerateOffsets();
             ApplyVisual();
+        }
+
+        /// <summary>
+        /// itemDefinition이 없으면(하위 호환용 고정 더미) 기존 checkRadius 값을 그대로 둔다.
+        /// itemDefinition이 있으면 실제 화면에 보이는 크기를 기준으로 checkRadius를 다시 계산한다:
+        ///  - artSprite가 있으면: 스케일 보정을 하지 않으므로(ApplyVisual 참고, scale=1 고정) 실제 렌더링
+        ///    크기는 sprite.rect(원본 텍스처에 선언된 픽셀 영역)를 sprite.pixelsPerUnit(임포트 설정에서 읽은
+        ///    실제 값, 하드코딩 없음)으로 나눈 값이다. displaySize는 이 경우 전혀 관여하지 않는다.
+        ///  - artSprite가 없으면(procedural): 기존처럼 displaySize 기준으로 계산한다.
+        /// </summary>
+        private void RecalculateCheckRadius()
+        {
+            if (itemDefinition == null) return;
+
+            if (itemDefinition.artSprite != null)
+            {
+                var sprite = itemDefinition.artSprite;
+                float pixelsPerUnit = sprite.pixelsPerUnit;
+                Vector2 renderedSize = pixelsPerUnit > 0f
+                    ? new Vector2(sprite.rect.width, sprite.rect.height) / pixelsPerUnit
+                    : Vector2.one;
+                float maxDimension = Mathf.Max(renderedSize.x, renderedSize.y);
+                checkRadius = maxDimension * checkRadiusRatio;
+            }
+            else
+            {
+                checkRadius = itemDefinition.displaySize * checkRadiusRatio;
+            }
         }
 
         private void EnsureSpottedMarker()
@@ -110,6 +153,9 @@ namespace PickupCent.Digging
             {
                 sr.sprite = itemDefinition.artSprite;
                 sr.color = Color.white;
+                // artSprite는 스케일 보정 없이 원본 그대로(scale=1) 렌더링한다 — 실제 크기는
+                // 아트 임포트 설정의 Pixels Per Unit이 그대로 결정한다. displaySize는 관여하지 않는다.
+                transform.localScale = Vector3.one;
                 return;
             }
 
@@ -117,6 +163,9 @@ namespace PickupCent.Digging
                 ? ProceduralSprites.CreateCircle(64, itemDefinition.displayColor, itemDefinition.displaySize)
                 : ProceduralSprites.CreateSquare(64, itemDefinition.displayColor, itemDefinition.displaySize);
             sr.color = Color.white;
+            // procedural 스프라이트는 항상 자기 pixelsPerUnit에 displaySize를 이미 반영해서 만들어지므로
+            // scale=1이어야 한다 — 이전에 artSprite 아이템이었다가 재배치된 경우를 대비해 명시적으로 리셋.
+            transform.localScale = Vector3.one;
         }
 
         private void GenerateOffsets()
@@ -214,6 +263,7 @@ namespace PickupCent.Digging
                 spotted = true;
                 if (spottedMarker != null) spottedMarker.gameObject.SetActive(true);
                 Debug.Log($"[DiggableItem:{DisplayName}] 금속탐지기에 발견 표시됨 (습득 아님, 파야 얻을 수 있음)");
+                OnSpotted?.Invoke(this);
             }
         }
 
