@@ -1,64 +1,77 @@
-using System;
+﻿using System;
+using PickupCent.Economy;
+using PickupCent.UI;
 using UnityEngine;
 
 namespace PickupCent.Digging
 {
     /// <summary>
-    /// 키보드 1/2/3(또는 도구바 UI)으로 손/삽/금속탐지기를 전환한다.
-    /// 세 도구 모두 SandMaskController.Strength를 갈아끼워 기존 강도÷경도 공식으로 판다 —
-    /// 금속탐지기도 예외 없이 파기가 기본 동작이며, 아이템 종류 상관없이 습득 가능하다.
-    /// 금속탐지기의 "탐지"는 파기와 별개의 부가 기능이다: 클릭 여부와 무관하게 매 프레임 마우스
-    /// 위치를 검사해서, detectableByMetalDetector가 true인 아이템 근처에 일정 시간 이상 머무르면
-    /// 그 아이템을 "발견 표시(spotted)"만 한다 — 습득은 여전히 파야 한다(DiggableItem.UpdateDetectorHover).
+    /// 손은 기본 도구이며, 나머지 도구는 상점에서 구매/수리/장착한다. 파기 공식은 README의 강도÷경도를 유지한다.
     /// </summary>
-    [DefaultExecutionOrder(-50)] // SandMaskController(-100) 이후, SandDigInput(기본값 0) 이전에 실행
+    [DefaultExecutionOrder(-50)]
     public class ToolManager : MonoBehaviour
     {
-        public enum ToolType { Hand, Shovel, Detector }
+        public enum ToolType { Hand, Shovel, Detector, Rake }
 
-        [Header("도구별 강도 (임시값)")]
+        [Header("도구별 강도")]
         [SerializeField] private float handStrength = 1f;
         [SerializeField] private float shovelStrength = 3f;
-        [Tooltip("금속탐지기의 파기 강도. 손과 같거나 살짝 낮게(예시값)")]
+        [SerializeField] private float rakeStrength = 2.1f;
+        [Tooltip("금속탐지기의 파기 강도. 탐지는 별도 기능이다.")]
         [SerializeField] private float detectorStrength = 0.8f;
 
         [Header("삽 파괴 리스크 (기획서 3-1: 빠르지만 가끔 터짐)")]
         [SerializeField, Range(0f, 1f)] private float shovelDestroyChance = 0.05f;
 
-        [Header("금속탐지기 - 탐지(발견 표시) 전용, 파기와는 별개")]
+        [Header("금속탐지기 - 탐지(발견 표시) 전용")]
         [SerializeField] private float detectorRadius = 1.5f;
-        [Tooltip("마우스가 반경 안에 이 시간(초) 이상 머무르면 발견 표시가 뜬다")]
         [SerializeField] private float detectorDwellTime = 0.2f;
+
+        [Header("상점 / 장착 상태")]
+        [SerializeField] private int shovelPurchaseCost = 120;
+        [SerializeField] private int rakePurchaseCost = 150;
+        [SerializeField] private int detectorPurchaseCost = 180;
+        [SerializeField] private int shovelRepairCost = 35;
+        [SerializeField] private int rakeRepairCost = 40;
+        [SerializeField] private int detectorRepairCost = 45;
+        [SerializeField, Range(0f, 200f)] private float shovelDurability = 93f;
+        [SerializeField, Range(0f, 200f)] private float rakeDurability = 100f;
+        [SerializeField, Range(0f, 200f)] private float detectorDurability = 100f;
+        [SerializeField] private bool shovelOwned;
+        [SerializeField] private bool rakeOwned;
+        [SerializeField] private bool detectorOwned;
+
+        [Header("도구별 브러시 반경")]
+        [SerializeField] private float handBrushRadius = 0.5f;
+        [SerializeField] private float shovelBrushRadius = 0.72f;
+        [SerializeField] private float rakeBrushRadius = 0.82f;
+        [SerializeField] private float detectorBrushRadius = 0.42f;
 
         [SerializeField] private SandMaskController sandMask;
         [SerializeField] private Camera targetCamera;
 
-        /// <summary>실제로 도구가 바뀔 때(초기화 시점 제외) 발생 — 사운드 등 알림용.</summary>
         public event Action<ToolType> OnToolSwitched;
 
         private ToolType currentTool = ToolType.Hand;
-
-        // 강화(파기 강도 강화)로 누적되는 보너스. 손/삽 공통 적용 — 기획서 7장: "강도 자체를 올리는 것".
-        // (금속탐지기는 기획서 7장 표에 강화 대상으로 명시되지 않아 이 보너스의 영향을 받지 않는다.)
         private float strengthBonus;
+        private float brushRadiusBonus;
+        private float durabilityCapacityBonus;
 
         public ToolType CurrentTool => currentTool;
         public float StrengthBonus => strengthBonus;
-        // 세 도구 모두 파기가 기본 동작이라 지금은 항상 true — 훗날 파기가 아닌 도구가 추가될 때를 대비해 남겨둠.
+        public float BrushRadiusBonus => brushRadiusBonus;
         public bool IsDiggingTool => true;
-
-        // --- 디버그 패널 등에서 실시간 조절하기 위한 get/set 프로퍼티 ---
 
         public float HandStrength
         {
             get => handStrength;
-            set { handStrength = value; ApplyToolStrength(); }
+            set { handStrength = value; ApplyToolStats(); }
         }
 
         public float ShovelStrength
         {
             get => shovelStrength;
-            set { shovelStrength = value; ApplyToolStrength(); }
+            set { shovelStrength = value; ApplyToolStats(); }
         }
 
         public float ShovelDestroyChance
@@ -83,27 +96,41 @@ namespace PickupCent.Digging
         {
             if (sandMask == null) sandMask = FindFirstObjectByType<SandMaskController>();
             if (targetCamera == null) targetCamera = Camera.main;
-            ApplyToolStrength();
+            ApplyToolStats();
             LogToolChanged();
         }
 
         private void Update()
         {
+            if (PopupPauseManager.IsPausedByPopup) return;
+
             if (Input.GetKeyDown(KeyCode.Alpha1)) SwitchTool(ToolType.Hand);
             else if (Input.GetKeyDown(KeyCode.Alpha2)) SwitchTool(ToolType.Shovel);
             else if (Input.GetKeyDown(KeyCode.Alpha3)) SwitchTool(ToolType.Detector);
+            else if (Input.GetKeyDown(KeyCode.Alpha4)) SwitchTool(ToolType.Rake);
 
             if (currentTool == ToolType.Detector) UpdateDetectorHoverScan();
         }
 
-        /// <summary>도구를 전환한다. 숫자 1/2/3 단축키와 도구바 UI 버튼이 공통으로 호출 — 상태가 항상 하나로 유지된다.</summary>
         public void SwitchTool(ToolType tool)
         {
+            if (!IsToolOwned(tool))
+            {
+                Debug.Log($"[Tool] {ToolLabel(tool)}은(는) 상점에서 구매한 뒤 장착할 수 있습니다.");
+                return;
+            }
+
             if (currentTool == tool) return;
             currentTool = tool;
-            ApplyToolStrength();
+            ApplyToolStats();
             LogToolChanged();
             OnToolSwitched?.Invoke(currentTool);
+        }
+
+        private void ApplyToolStats()
+        {
+            ApplyToolStrength();
+            ApplyToolBrushRadius();
         }
 
         private void ApplyToolStrength()
@@ -112,15 +139,116 @@ namespace PickupCent.Digging
             float baseStrength = currentTool switch
             {
                 ToolType.Shovel => shovelStrength,
+                ToolType.Rake => rakeStrength,
                 ToolType.Detector => detectorStrength,
                 _ => handStrength
             };
             sandMask.Strength = baseStrength + strengthBonus;
         }
 
-        // --- 강화 효과 적용 (UpgradeManager가 호출) ---
+        private void ApplyToolBrushRadius()
+        {
+            if (sandMask == null) return;
+            sandMask.BrushRadius = GetToolBrushRadius(currentTool);
+        }
 
-        /// <summary>파기 강도 강화. 손/삽 공통으로 적용되는 보너스를 누적한다.</summary>
+        public bool IsToolOwned(ToolType tool) => tool switch
+        {
+            ToolType.Hand => true,
+            ToolType.Shovel => shovelOwned,
+            ToolType.Rake => rakeOwned,
+            ToolType.Detector => detectorOwned,
+            _ => false
+        };
+
+        public bool IsToolEquipped(ToolType tool) => currentTool == tool;
+
+        public int GetToolPurchaseCost(ToolType tool) => tool switch
+        {
+            ToolType.Shovel => shovelPurchaseCost,
+            ToolType.Rake => rakePurchaseCost,
+            ToolType.Detector => detectorPurchaseCost,
+            _ => 0
+        };
+
+        public int GetToolRepairCost(ToolType tool) => tool switch
+        {
+            ToolType.Shovel => shovelRepairCost,
+            ToolType.Rake => rakeRepairCost,
+            ToolType.Detector => detectorRepairCost,
+            _ => 0
+        };
+
+        public float GetToolDurability(ToolType tool) => tool switch
+        {
+            ToolType.Shovel => shovelDurability,
+            ToolType.Rake => rakeDurability,
+            ToolType.Detector => detectorDurability,
+            _ => GetToolMaxDurability(tool)
+        };
+
+        public float GetToolMaxDurability(ToolType tool) => tool == ToolType.Hand ? 100f : 100f + durabilityCapacityBonus;
+
+        public float GetToolBrushRadius(ToolType tool)
+        {
+            float baseRadius = tool switch
+            {
+                ToolType.Shovel => shovelBrushRadius,
+                ToolType.Rake => rakeBrushRadius,
+                ToolType.Detector => detectorBrushRadius,
+                _ => handBrushRadius
+            };
+            return Mathf.Max(0.05f, baseRadius + brushRadiusBonus);
+        }
+
+        public bool CanRepairTool(ToolType tool) => IsToolOwned(tool) && tool != ToolType.Hand && GetToolDurability(tool) < GetToolMaxDurability(tool);
+
+        public bool TryPurchaseTool(ToolType tool, ScoreTracker tracker)
+        {
+            if (tool == ToolType.Hand) return true;
+            if (IsToolOwned(tool)) return true;
+            if (tracker == null) return false;
+
+            int cost = GetToolPurchaseCost(tool);
+            if (tracker.Score < cost)
+            {
+                Debug.Log($"[Tool] 구매 실패: {ToolLabel(tool)} 필요 {cost}, 보유 {tracker.Score}");
+                return false;
+            }
+
+            tracker.Spend(cost, $"{ToolLabel(tool)} 구매");
+            if (tool == ToolType.Shovel) shovelOwned = true;
+            else if (tool == ToolType.Rake) rakeOwned = true;
+            else if (tool == ToolType.Detector) detectorOwned = true;
+            SetDurability(tool, GetToolMaxDurability(tool));
+            Debug.Log($"[Tool] 구매 완료: {ToolLabel(tool)}");
+            return true;
+        }
+
+        public bool TryRepairTool(ToolType tool, ScoreTracker tracker)
+        {
+            if (!CanRepairTool(tool) || tracker == null) return false;
+
+            int cost = GetToolRepairCost(tool);
+            if (tracker.Score < cost)
+            {
+                Debug.Log($"[Tool] 수리 실패: {ToolLabel(tool)} 필요 {cost}, 보유 {tracker.Score}");
+                return false;
+            }
+
+            tracker.Spend(cost, $"{ToolLabel(tool)} 수리");
+            SetDurability(tool, GetToolMaxDurability(tool));
+            Debug.Log($"[Tool] 수리 완료: {ToolLabel(tool)}");
+            return true;
+        }
+
+        public bool TryEquipTool(ToolType tool)
+        {
+            if (!IsToolOwned(tool)) return false;
+            SwitchTool(tool);
+            return true;
+        }
+
         public void AddStrengthBonus(float amount)
         {
             strengthBonus += amount;
@@ -128,36 +256,52 @@ namespace PickupCent.Digging
             Debug.Log($"[Tool] 파기 강도 보너스 +{amount} (누적 {strengthBonus}) — 손/삽 공통 적용");
         }
 
-        /// <summary>삽 안정성 강화. 파괴 확률을 감소시킨다(0 밑으로는 안 내려감).</summary>
         public void ReduceShovelDestroyChance(float amount)
         {
             shovelDestroyChance = Mathf.Max(0f, shovelDestroyChance - amount);
             Debug.Log($"[Tool] 삽 파괴 확률 -{amount:P1} → 현재 {shovelDestroyChance:P1}");
         }
 
-        /// <summary>탐지 범위 강화. 금속탐지기 반경을 확장한다.</summary>
         public void AddDetectorRadius(float amount)
         {
             detectorRadius += amount;
             Debug.Log($"[Tool] 탐지 범위 +{amount} → 현재 {detectorRadius}");
         }
 
-        private void LogToolChanged()
+        public void AddDurabilityCapacityBonus(float amount)
         {
-            string label = currentTool switch
-            {
-                ToolType.Hand => "손",
-                ToolType.Shovel => "삽",
-                ToolType.Detector => "금속탐지기",
-                _ => currentTool.ToString()
-            };
-            Debug.Log($"[Tool] 현재 도구: {label}");
+            durabilityCapacityBonus += amount;
+            Debug.Log($"[Tool] 도구 최대 내구도 +{amount} (누적 {durabilityCapacityBonus})");
         }
 
-        /// <summary>
-        /// 클릭 여부와 무관하게 매 프레임 실행 — 마우스 위치가 탐지 가능한 아이템 근처에
-        /// detectorDwellTime 이상 머무르면 그 아이템을 "발견 표시"한다(습득 아님).
-        /// </summary>
+        public void AddBrushRadiusBonus(float amount)
+        {
+            brushRadiusBonus += amount;
+            ApplyToolBrushRadius();
+            Debug.Log($"[Tool] 브러시 반경 보너스 +{amount} (누적 {brushRadiusBonus})");
+        }
+
+        private void SetDurability(ToolType tool, float value)
+        {
+            if (tool == ToolType.Shovel) shovelDurability = value;
+            else if (tool == ToolType.Rake) rakeDurability = value;
+            else if (tool == ToolType.Detector) detectorDurability = value;
+        }
+
+        private void LogToolChanged()
+        {
+            Debug.Log($"[Tool] 현재 도구: {ToolLabel(currentTool)}");
+        }
+
+        public static string ToolLabel(ToolType tool) => tool switch
+        {
+            ToolType.Hand => "손",
+            ToolType.Shovel => "플라스틱 삽",
+            ToolType.Rake => "갈퀴",
+            ToolType.Detector => "금속탐지기",
+            _ => tool.ToString()
+        };
+
         private void UpdateDetectorHoverScan()
         {
             if (targetCamera == null) return;
@@ -174,3 +318,5 @@ namespace PickupCent.Digging
         }
     }
 }
+
+

@@ -1,4 +1,4 @@
-Shader "PickupCent/SandDecay"
+﻿Shader "PickupCent/SandDecay"
 {
     // 마스크 전체에 "안 건드리면 서서히 되메워짐"을 적용하는 풀스크린 블릿 셰이더.
     Properties
@@ -44,13 +44,14 @@ Shader "PickupCent/SandDecay"
                 return o;
             }
 
-            fixed4 frag(v2f i) : SV_Target
+            float4 frag(v2f i) : SV_Target
             {
                 float m = tex2D(_MainTex, i.uv).r;
                 m = saturate(m + _RegenRate * _DeltaTime);
-                return fixed4(m, 0, 0, 1);
+                return float4(m, 0, 0, 1);
             }
             ENDCG
         }
     }
 }
+

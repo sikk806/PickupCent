@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using PickupCent.UI;
 using UnityEngine;
 
 namespace PickupCent.Digging
@@ -34,6 +35,12 @@ namespace PickupCent.Digging
 
         private void Update()
         {
+            if (PopupPauseManager.IsPausedByPopup)
+            {
+                dragging = false;
+                return;
+            }
+
             if (toolManager != null && !toolManager.IsDiggingTool)
             {
                 dragging = false;
@@ -74,10 +81,15 @@ namespace PickupCent.Digging
             if (targetCamera == null || mask == null) return;
 
             Vector3 screen = Input.mousePosition;
+            if (!UICanvasUtility.IsScreenPointInsideStage(screen)) return;
+
             screen.z = Mathf.Abs(targetCamera.transform.position.z - mask.transform.position.z);
             Vector3 world = targetCamera.ScreenToWorldPoint(screen);
+            if (!mask.IsWorldInsideField(world)) return;
+
             mask.Erode(world);
             OnStroke?.Invoke();
         }
     }
 }
+

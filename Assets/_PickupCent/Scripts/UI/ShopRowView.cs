@@ -1,4 +1,4 @@
-using PickupCent.Common;
+﻿using PickupCent.Common;
 using PickupCent.Upgrades;
 using UnityEngine;
 using UnityEngine.UI;
@@ -34,15 +34,15 @@ namespace PickupCent.UI
 
         private void BuildUI()
         {
-            gameObject.AddComponent<LayoutElement>().preferredHeight = 56f;
+            gameObject.AddComponent<LayoutElement>().preferredHeight = 66f;
 
             var bg = gameObject.AddComponent<Image>();
             bg.sprite = ProceduralSprites.CreateRoundedRectSliced(48, 10f, PickupCentPalette.ListItemBg);
             bg.type = Image.Type.Sliced;
 
             var hlg = gameObject.AddComponent<HorizontalLayoutGroup>();
-            hlg.padding = new RectOffset(10, 10, 6, 6);
-            hlg.spacing = 8f;
+            hlg.padding = new RectOffset(14, 14, 10, 10);
+            hlg.spacing = 12f;
             hlg.childAlignment = TextAnchor.MiddleLeft;
             hlg.childControlWidth = true;
             hlg.childControlHeight = true;
@@ -72,7 +72,7 @@ namespace PickupCent.UI
             infoGO.transform.SetParent(transform, false);
             infoGO.AddComponent<LayoutElement>().flexibleWidth = 1;
             var infoVlg = infoGO.AddComponent<VerticalLayoutGroup>();
-            infoVlg.spacing = 2f;
+            infoVlg.spacing = 5f;
             infoVlg.childAlignment = TextAnchor.MiddleLeft;
             infoVlg.childControlWidth = true;
             infoVlg.childControlHeight = true;
@@ -85,19 +85,19 @@ namespace PickupCent.UI
             nameText.font = PickupCentFonts.Default;
             nameText.text = definition != null ? definition.upgradeName : "-";
             nameText.color = PickupCentPalette.Cream;
-            nameText.fontSize = 15;
+            nameText.fontSize = 16;
             nameText.fontStyle = FontStyle.Bold;
             nameText.alignment = TextAnchor.MiddleLeft;
-            nameGO.AddComponent<LayoutElement>().preferredHeight = 20f;
+            nameGO.AddComponent<LayoutElement>().preferredHeight = 23f;
 
             var levelGO = new GameObject("Level", typeof(RectTransform));
             levelGO.transform.SetParent(infoGO.transform, false);
             levelText = levelGO.AddComponent<Text>();
             levelText.font = PickupCentFonts.Default;
             levelText.color = new Color(1f, 1f, 1f, 0.6f);
-            levelText.fontSize = 12;
+            levelText.fontSize = 13;
             levelText.alignment = TextAnchor.MiddleLeft;
-            levelGO.AddComponent<LayoutElement>().preferredHeight = 16f;
+            levelGO.AddComponent<LayoutElement>().preferredHeight = 19f;
 
             var costGO = new GameObject("Cost", typeof(RectTransform));
             costGO.transform.SetParent(transform, false);
@@ -107,7 +107,7 @@ namespace PickupCent.UI
             costText.color = PickupCentPalette.GoldBright;
             costText.fontSize = 15;
             costText.alignment = TextAnchor.MiddleRight;
-            costGO.AddComponent<LayoutElement>().preferredWidth = 56f;
+            costGO.AddComponent<LayoutElement>().preferredWidth = 72f;
 
             var normalSprite = ProceduralSprites.CreateGradientButtonSliced(40, 10f,
                 PickupCentPalette.Gold, PickupCentPalette.WoodLight, 3f, PickupCentPalette.ButtonBottomBorder);
@@ -116,7 +116,7 @@ namespace PickupCent.UI
 
             var buySlotGO = new GameObject("BuySlot", typeof(RectTransform));
             buySlotGO.transform.SetParent(transform, false);
-            buySlotGO.AddComponent<LayoutElement>().preferredWidth = 56f;
+            buySlotGO.AddComponent<LayoutElement>().preferredWidth = 72f;
 
             var buyVisual = UICanvasUtility.CreatePressableSurface(buySlotGO.transform, normalSprite, pressedSprite,
                 out buyButton, out _);
@@ -133,7 +133,7 @@ namespace PickupCent.UI
             buyLabel.text = "구매";
             buyLabel.color = PickupCentPalette.Ink;
             buyLabel.fontStyle = FontStyle.Bold;
-            buyLabel.fontSize = 13;
+            buyLabel.fontSize = 14;
             buyLabel.alignment = TextAnchor.MiddleCenter;
 
             if (upgradeManager != null && definition != null)
@@ -179,3 +179,4 @@ namespace PickupCent.UI
         }
     }
 }
+

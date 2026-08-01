@@ -1,6 +1,9 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using PickupCent.Common;
+using PickupCent.Digging;
 using PickupCent.Economy;
+using PickupCent.Events;
 using PickupCent.Upgrades;
 using UnityEngine;
 using UnityEngine.UI;
@@ -8,310 +11,736 @@ using UnityEngine.UI;
 namespace PickupCent.UI
 {
     /// <summary>
-    /// 상점 여닫기 버튼(사이드패널에 상시 고정) + 강화 4종 목록(화면 중앙 모달 팝업)을 스스로 구성한다.
-    /// 참고 목업 3번 이미지처럼, 상점 내용 자체는 사이드패널에 항상 붙어있는 인라인 섹션이 아니라
-    /// 어두워진 배경 위에 뜨는 별도의 중앙 카드다 — 토글 버튼만 사이드패널에 남아있고, 눌렀을 때 뜨는
-    /// 카드는 ModalLayer(최상위 레이어)에 만든다. 강화 데이터는 UpgradeManager가 이미 들고 있는 4개
-    /// UpgradeDefinition을 그대로 가져다 쓴다.
+    /// HTML 프로토타입의 shopScreen 구조에 맞춘 상점. 도구/강화/자동화 데이터를 런타임 UI로 표시한다.
     /// </summary>
     public class ShopPanelController : MonoBehaviour
     {
+        private enum ShopTab { Tools, Passives, Auto }
+
         [SerializeField] private ScoreTracker scoreTracker;
         [SerializeField] private UpgradeManager upgradeManager;
+        [SerializeField] private ToolManager toolManager;
+        [SerializeField] private ItemSpawner itemSpawner;
+        [SerializeField] private ChildrenSwarmEvent swarmEvent;
+        [SerializeField] private AutoDiggerController autoDigger;
 
-        private GameObject modalRoot;
-        private ShopRowView[] rows;
+        private readonly List<Action<int>> refreshers = new List<Action<int>>();
+        private GameObject overlayRoot;
+        private Transform shopTabs;
+        private Transform listContent;
+        private ScrollRect shopScroll;
+        private Image toolsTabImage;
+        private Image passivesTabImage;
+        private Image autoTabImage;
+        private ShopTab activeTab = ShopTab.Tools;
+        private bool isOpen;
 
-        /// <summary>패널이 열리거나 닫힐 때마다 발생(true=열림, false=닫힘) — 사운드 등 알림용.</summary>
+        private int incomeLevel;
+        private int rareFindLevel;
+        private int durabilityLevel;
+        private const int MaxPassiveLevel = 5;
+
         public event Action<bool> OnPanelToggled;
 
         private void Awake()
         {
             if (scoreTracker == null) scoreTracker = FindFirstObjectByType<ScoreTracker>();
             if (upgradeManager == null) upgradeManager = FindFirstObjectByType<UpgradeManager>();
-
-            CleanUpLegacyElements();
+            if (toolManager == null) toolManager = FindFirstObjectByType<ToolManager>();
+            if (itemSpawner == null) itemSpawner = FindFirstObjectByType<ItemSpawner>();
+            if (swarmEvent == null) swarmEvent = FindFirstObjectByType<ChildrenSwarmEvent>();
+            if (autoDigger == null) autoDigger = FindFirstObjectByType<AutoDiggerController>();
             BuildUI();
         }
 
-        /// <summary>Test5UISetup(예전 에디터 메뉴)가 만들어 뒀던 상점 토글 버튼/패널은 이제 이 컴포넌트가
-        /// 전부 새로 만든 것으로 완전히 대체됐다 — 화면에 옛 UI가 겹쳐 보이지 않도록 새로 만들기 전에 지운다.
-        /// (아래에서 새로 만드는 토글 버튼도 같은 이름 "ShopToggleButton"을 쓰지만, 이 정리가 새로
-        /// 만들기 전에 먼저 실행되므로 지금 이 시점엔 옛 것 하나만 존재해 혼동 없이 찾아낼 수 있다.)</summary>
-        private void CleanUpLegacyElements()
+        private void OnDestroy()
         {
-            var canvasGO = GameObject.Find("UICanvas");
-            if (canvasGO == null) return;
-
-            var oldToggle = canvasGO.transform.Find("ShopToggleButton");
-            if (oldToggle != null) Destroy(oldToggle.gameObject);
-
-            var oldPanel = canvasGO.transform.Find("ShopPanel");
-            if (oldPanel != null) Destroy(oldPanel.gameObject);
+            if (isOpen) PopupPauseManager.PopPause();
         }
 
         private void BuildUI()
         {
             CreateToggleButton(UICanvasUtility.EnsureSidePanel());
-            BuildModal();
+            CreateOverlay();
+            BuildActiveContent();
         }
 
-        /// <summary>
-        /// 목업 3번 이미지 구조: 어두운 반투명 오버레이(바깥 클릭 시 닫힘) 위에 화면 중앙 고정폭 카드.
-        /// 카드 우상단엔 X 닫기 버튼, 그 아래 카테고리 탭과 강화 목록이 세로로 쌓인다.
-        /// </summary>
-        private void BuildModal()
+        private void CreateOverlay()
         {
-            var modalLayer = UICanvasUtility.EnsureModalLayer();
+            var stageRoot = UICanvasUtility.EnsureStageRoot();
+            overlayRoot = new GameObject("ShopOverlay", typeof(RectTransform));
+            overlayRoot.transform.SetParent(stageRoot, false);
+            Stretch((RectTransform)overlayRoot.transform);
+            var backdrop = overlayRoot.AddComponent<Image>();
+            backdrop.color = new Color(58f / 255f, 42f / 255f, 28f / 255f, 0.97f);
+            backdrop.raycastTarget = true;
+            overlayRoot.AddComponent<CanvasGroup>().blocksRaycasts = true;
 
-            modalRoot = new GameObject("ShopModal", typeof(RectTransform));
-            modalRoot.transform.SetParent(modalLayer, false);
-            var modalRt = modalRoot.GetComponent<RectTransform>();
-            modalRt.anchorMin = Vector2.zero;
-            modalRt.anchorMax = Vector2.one;
-            modalRt.offsetMin = Vector2.zero;
-            modalRt.offsetMax = Vector2.zero;
+            var panel = new GameObject("ShopModalPanel", typeof(RectTransform));
+            panel.transform.SetParent(overlayRoot.transform, false);
+            var panelRt = (RectTransform)panel.transform;
+            panelRt.anchorMin = new Vector2(0.5f, 0.5f);
+            panelRt.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRt.pivot = new Vector2(0.5f, 0.5f);
+            panelRt.sizeDelta = new Vector2(560f, 454f);
 
-            CreateOverlay(modalRoot.transform);
-            var content = CreateCard(modalRoot.transform);
+            var layout = panel.AddComponent<VerticalLayoutGroup>();
+            layout.spacing = 12f;
+            layout.childAlignment = TextAnchor.UpperCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
 
-            CreateCategoryTab(content);
-
-            modalRoot.SetActive(false);
-
-            if (upgradeManager == null) return;
-
-            rows = new[]
-            {
-                CreateRow(content, upgradeManager.DigStrengthDef),
-                CreateRow(content, upgradeManager.DigRangeDef),
-                CreateRow(content, upgradeManager.ShovelStabilityDef),
-                CreateRow(content, upgradeManager.DetectRangeDef),
-            };
+            CreateCloseButton(panel.transform);
+            CreateTitle(panel.transform);
+            CreateSubtitle(panel.transform);
+            CreateTabs(panel.transform);
+            CreateList(panel.transform);
+            var close = panel.transform.Find("CloseButton");
+            if (close != null) close.SetAsLastSibling();
+            overlayRoot.SetActive(false);
         }
 
-        /// <summary>카드 밖 어두운 영역 — 클릭하면 상점을 닫는다.</summary>
-        private void CreateOverlay(Transform parent)
+        private void CreateCloseButton(Transform parent)
         {
-            var go = new GameObject("Overlay", typeof(RectTransform));
+            var go = new GameObject("CloseButton", typeof(RectTransform));
             go.transform.SetParent(parent, false);
-            var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = Vector2.one;
-            rt.offsetMin = Vector2.zero;
-            rt.offsetMax = Vector2.zero;
-
-            var image = go.AddComponent<Image>();
-            image.color = new Color(0f, 0f, 0f, 0.6f);
-
-            var button = go.AddComponent<Button>();
-            button.transition = Selectable.Transition.None;
-            button.onClick.AddListener(ClosePanel);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = new Vector2(1f, 1f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(1f, 1f);
+            rt.anchoredPosition = new Vector2(-2f, -2f);
+            rt.sizeDelta = new Vector2(30f, 30f);
+            go.AddComponent<LayoutElement>().ignoreLayout = true;
+            CreateFlatButton(go.transform, "X", 16, PickupCentPalette.SecondaryButtonBg, PickupCentPalette.Cream, ClosePanel);
         }
 
-        /// <summary>화면 중앙에 고정폭으로 뜨는 카드. 반환값은 탭/목록을 채워 넣을 콘텐츠 컨테이너.</summary>
-        private Transform CreateCard(Transform parent)
+        private void CreateTitle(Transform parent)
         {
-            var cardGO = new GameObject("Card", typeof(RectTransform));
-            cardGO.transform.SetParent(parent, false);
-            var cardRt = cardGO.GetComponent<RectTransform>();
-            cardRt.anchorMin = new Vector2(0.5f, 0.5f);
-            cardRt.anchorMax = new Vector2(0.5f, 0.5f);
-            cardRt.pivot = new Vector2(0.5f, 0.5f);
-            cardRt.anchoredPosition = Vector2.zero;
-            cardRt.sizeDelta = new Vector2(320f, 0f);
-            cardGO.AddComponent<LayoutElement>().preferredWidth = 320f;
+            var go = new GameObject("ModalTitle", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            go.AddComponent<LayoutElement>().preferredHeight = 28f;
+            var text = go.AddComponent<Text>();
+            text.font = PickupCentFonts.Title;
+            text.text = "상점";
+            text.color = PickupCentPalette.GoldBright;
+            text.fontSize = 22;
+            text.fontStyle = FontStyle.Bold;
+            text.alignment = TextAnchor.MiddleCenter;
+        }
 
-            // 카드 자신 = 테두리색 채움, 그 위 2px 안쪽으로 배경색 패널 — HUD 알약과 동일한 트릭.
-            var borderImage = cardGO.AddComponent<Image>();
-            borderImage.sprite = ProceduralSprites.CreateRoundedRectSliced(64, 16f, PickupCentPalette.BorderThin);
-            borderImage.type = Image.Type.Sliced;
+        private void CreateSubtitle(Transform parent)
+        {
+            var go = new GameObject("ModalSub", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            go.AddComponent<LayoutElement>().preferredHeight = 18f;
+            var text = go.AddComponent<Text>();
+            text.font = PickupCentFonts.Default;
+            text.text = "번 돈으로 도구·패시브·자동화를 삽니다";
+            text.color = PickupCentPalette.WithAlpha(Color.white, 0.55f);
+            text.fontSize = 12;
+            text.alignment = TextAnchor.MiddleCenter;
+        }
 
-            var bgGO = new GameObject("Background", typeof(RectTransform));
-            bgGO.transform.SetParent(cardGO.transform, false);
-            var bgRt = bgGO.GetComponent<RectTransform>();
-            bgRt.anchorMin = Vector2.zero;
-            bgRt.anchorMax = Vector2.one;
-            bgRt.offsetMin = new Vector2(2f, 2f);
-            bgRt.offsetMax = new Vector2(-2f, -2f);
-            var bgImage = bgGO.AddComponent<Image>();
-            bgImage.sprite = ProceduralSprites.CreateRoundedRectSliced(64, 14f, PickupCentPalette.PanelBgSolid);
-            bgImage.type = Image.Type.Sliced;
-            bgGO.AddComponent<LayoutElement>().ignoreLayout = true;
+        private void CreateTabs(Transform parent)
+        {
+            var row = new GameObject("ShopTabs", typeof(RectTransform));
+            row.transform.SetParent(parent, false);
+            row.AddComponent<LayoutElement>().preferredHeight = 40f;
+            var hlg = row.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 6f;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = true;
+            hlg.childForceExpandHeight = true;
+            shopTabs = row.transform;
 
-            var vlg = cardGO.AddComponent<VerticalLayoutGroup>();
-            vlg.padding = new RectOffset(18, 18, 16, 18);
-            vlg.spacing = 10f;
+            CreateTab("도구", ShopTab.Tools, out toolsTabImage);
+            CreateTab("패시브", ShopTab.Passives, out passivesTabImage);
+            CreateTab("자동화", ShopTab.Auto, out autoTabImage);
+        }
+
+        private void CreateTab(string label, ShopTab tab, out Image image)
+        {
+            var go = new GameObject($"Tab_{label}", typeof(RectTransform));
+            go.transform.SetParent(shopTabs, false);
+            go.AddComponent<LayoutElement>().flexibleWidth = 1f;
+            var button = CreateFlatButton(go.transform, label, 13, PickupCentPalette.SecondaryButtonBg, PickupCentPalette.Cream, () => SelectTab(tab));
+            image = button.GetComponent<Image>();
+        }
+
+        private void CreateList(Transform parent)
+        {
+            var scrollGO = new GameObject("ShopList", typeof(RectTransform));
+            scrollGO.transform.SetParent(parent, false);
+            var scrollLayout = scrollGO.AddComponent<LayoutElement>();
+            scrollLayout.preferredHeight = 330f;
+            scrollLayout.flexibleHeight = 1f;
+
+            shopScroll = scrollGO.AddComponent<ScrollRect>();
+            shopScroll.horizontal = false;
+            shopScroll.movementType = ScrollRect.MovementType.Clamped;
+
+            var viewport = new GameObject("Viewport", typeof(RectTransform));
+            viewport.transform.SetParent(scrollGO.transform, false);
+            var viewportRt = (RectTransform)viewport.transform;
+            Stretch(viewportRt);
+            viewportRt.offsetMax = new Vector2(-4f, 0f);
+            viewport.AddComponent<RectMask2D>();
+
+            shopScroll.viewport = viewportRt;
+
+            var content = new GameObject("Content", typeof(RectTransform));
+            content.transform.SetParent(viewport.transform, false);
+            listContent = content.transform;
+            var contentRt = (RectTransform)content.transform;
+            contentRt.anchorMin = new Vector2(0f, 1f);
+            contentRt.anchorMax = new Vector2(1f, 1f);
+            contentRt.pivot = new Vector2(0.5f, 1f);
+            contentRt.offsetMin = Vector2.zero;
+            contentRt.offsetMax = Vector2.zero;
+            var vlg = content.AddComponent<VerticalLayoutGroup>();
+            vlg.spacing = 7f;
             vlg.childControlWidth = true;
             vlg.childControlHeight = true;
             vlg.childForceExpandWidth = true;
             vlg.childForceExpandHeight = false;
-            vlg.childAlignment = TextAnchor.UpperCenter;
-            cardGO.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-            CreateTitleRow(cardGO.transform);
-            CreateCloseButton(cardGO.transform);
-
-            var contentGO = new GameObject("Content", typeof(RectTransform));
-            contentGO.transform.SetParent(cardGO.transform, false);
-            var contentVlg = contentGO.AddComponent<VerticalLayoutGroup>();
-            contentVlg.spacing = 8f;
-            contentVlg.childControlWidth = true;
-            contentVlg.childControlHeight = true;
-            contentVlg.childForceExpandWidth = true;
-            contentVlg.childForceExpandHeight = false;
-            contentGO.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-            return contentGO.transform;
+            content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            shopScroll.content = contentRt;
         }
 
-        private void CreateTitleRow(Transform card)
+        private void SelectTab(ShopTab tab)
         {
-            var go = new GameObject("Title", typeof(RectTransform));
-            go.transform.SetParent(card, false);
-            go.AddComponent<LayoutElement>().preferredHeight = 26f;
-
-            var label = go.AddComponent<Text>();
-            label.font = PickupCentFonts.Title;
-            label.fontStyle = FontStyle.Bold;
-            label.fontSize = 20;
-            label.color = PickupCentPalette.GoldBright;
-            label.text = "상점";
-            label.alignment = TextAnchor.MiddleLeft;
+            if (activeTab == tab && listContent.childCount > 0) return;
+            activeTab = tab;
+            BuildActiveContent();
+            RefreshRows();
         }
 
-        /// <summary>카드 우상단에 절대 위치로 겹쳐지는 X 닫기 버튼 — 레이아웃 흐름에서 제외한다.</summary>
-        private void CreateCloseButton(Transform card)
+        private void BuildActiveContent()
         {
-            var go = new GameObject("CloseButton", typeof(RectTransform));
-            go.transform.SetParent(card, false);
-            var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(1f, 1f);
-            rt.anchorMax = new Vector2(1f, 1f);
-            rt.pivot = new Vector2(1f, 1f);
-            rt.anchoredPosition = new Vector2(-10f, -10f);
-            rt.sizeDelta = new Vector2(28f, 28f);
-            go.AddComponent<LayoutElement>().ignoreLayout = true;
+            if (listContent == null) return;
+            for (int i = listContent.childCount - 1; i >= 0; i--)
+                Destroy(listContent.GetChild(i).gameObject);
+            refreshers.Clear();
+            UpdateTabVisuals();
 
-            var image = go.AddComponent<Image>();
-            image.sprite = ProceduralSprites.CreateRoundedRectSliced(28, 8f, PickupCentPalette.SecondaryButtonBg);
-            image.type = Image.Type.Sliced;
+            if (activeTab == ShopTab.Tools) BuildToolRows();
+            else if (activeTab == ShopTab.Passives) BuildPassiveRows();
+            else BuildAutomationRows();
 
-            var button = go.AddComponent<Button>();
-            button.onClick.AddListener(ClosePanel);
-
-            var labelGO = new GameObject("Label", typeof(RectTransform));
-            labelGO.transform.SetParent(go.transform, false);
-            var labelRt = labelGO.GetComponent<RectTransform>();
-            labelRt.anchorMin = Vector2.zero;
-            labelRt.anchorMax = Vector2.one;
-            labelRt.offsetMin = Vector2.zero;
-            labelRt.offsetMax = Vector2.zero;
-            var label = labelGO.AddComponent<Text>();
-            label.font = PickupCentFonts.Default;
-            label.text = "X";
-            label.color = PickupCentPalette.Cream;
-            label.fontStyle = FontStyle.Bold;
-            label.fontSize = 15;
-            label.alignment = TextAnchor.MiddleCenter;
+            ForceListLayout();
+            LogShopListDiagnostics();
         }
 
-        /// <summary>
-        /// 목업 3번 이미지의 카테고리 탭(도구/패시브/자동화) 자리에 해당하는 부분. 실제로는 강화
-        /// ScriptableObject 4종이 전부 한 카테고리("강화")이고, 도구 장착/패시브/자동화 같은 별도
-        /// 시스템은 존재하지 않는다 — 없는 기능을 만들어내지 않기 위해, 탭 여러 개를 흉내내는 대신
-        /// 실제 있는 카테고리 하나만 골드로 강조된 탭 모양으로 보여준다(탭 전환 기능 자체는 없음).
-        /// </summary>
-        private void CreateCategoryTab(Transform content)
+        private void BuildToolRows()
         {
-            var go = new GameObject("CategoryTab", typeof(RectTransform));
-            go.transform.SetParent(content, false);
-            go.AddComponent<LayoutElement>().preferredHeight = 32f;
-
-            var image = go.AddComponent<Image>();
-            image.sprite = ProceduralSprites.CreateGradientButtonSliced(40, 10f,
-                PickupCentPalette.Gold, PickupCentPalette.WoodLight, 2f, PickupCentPalette.ButtonBottomBorder);
-            image.type = Image.Type.Sliced;
-
-            var labelGO = new GameObject("Label", typeof(RectTransform));
-            labelGO.transform.SetParent(go.transform, false);
-            var labelRt = labelGO.GetComponent<RectTransform>();
-            labelRt.anchorMin = Vector2.zero;
-            labelRt.anchorMax = Vector2.one;
-            labelRt.offsetMin = Vector2.zero;
-            labelRt.offsetMax = Vector2.zero;
-            var label = labelGO.AddComponent<Text>();
-            label.font = PickupCentFonts.Default;
-            label.text = "강화";
-            label.color = PickupCentPalette.Ink;
-            label.fontStyle = FontStyle.Bold;
-            label.fontSize = 14;
-            label.alignment = TextAnchor.MiddleCenter;
+            CreateSectionTitle("TOOLS");
+            CreateToolRow(ToolManager.ToolType.Hand, "손", "무한 내구도. 파기 범위가 좁습니다.");
+            CreateToolRow(ToolManager.ToolType.Shovel, "플라스틱 삽", "표준 도구. 손보다 훨씬 넓게 팝니다.");
+            CreateToolRow(ToolManager.ToolType.Rake, "갈퀴", "가로로 넓은 타원형으로 긁습니다.");
+            CreateToolRow(ToolManager.ToolType.Detector, "금속탐지기", "근처 동전을 별 표시로 찾아냅니다.");
         }
 
-        private ShopRowView CreateRow(Transform content, UpgradeDefinition def)
+        private void BuildPassiveRows()
         {
-            if (def == null) return null;
-            var rowGO = new GameObject($"Row_{def.upgradeName}", typeof(RectTransform));
-            var row = rowGO.AddComponent<ShopRowView>();
-            row.Setup(content, def, upgradeManager);
+            CreateSectionTitle("UPGRADES");
+            CreateUpgradeDefinitionRow(upgradeManager?.DigStrengthDef, "손과 도구의 파기 강도가 증가합니다.");
+            CreateUpgradeDefinitionRow(upgradeManager?.DigRangeDef, "손과 도구의 파기 범위가 넓어집니다.");
+            CreateUpgradeDefinitionRow(upgradeManager?.ShovelStabilityDef, "삽으로 습득할 때 아이템이 파괴될 확률이 낮아집니다.");
+            CreateUpgradeDefinitionRow(upgradeManager?.DetectRangeDef, "금속탐지기의 즉시 발견 반경이 넓어집니다.");
+
+            CreateSectionTitle("PASSIVES");
+            CreatePassiveRow("수익 증가", "습득 금액이 영구적으로 증가합니다.", 90, () => incomeLevel, () => { scoreTracker?.AddIncomeMultiplier(0.15f); incomeLevel++; });
+            CreatePassiveRow("발견 확률 증가", "구슬·딱지 등 가치 있는 발견물 확률이 증가합니다.", 110, () => rareFindLevel, () => { itemSpawner?.AddRareFindWeightBonus(0.15f); rareFindLevel++; });
+            CreatePassiveRow("내구도 개선", "구매한 도구들의 최대 내구도가 증가합니다.", 100, () => durabilityLevel, () => { toolManager?.AddDurabilityCapacityBonus(20f); durabilityLevel++; });
+        }
+
+        private void BuildAutomationRows()
+        {
+            CreateSectionTitle("AUTOMATION");
+            CreateAutoDiggerRow();
+            CreateChildrenEventRow();
+        }
+
+        private void CreateSectionTitle(string title)
+        {
+            var go = new GameObject($"Section_{title}", typeof(RectTransform));
+            go.transform.SetParent(listContent, false);
+            go.AddComponent<LayoutElement>().preferredHeight = 22f;
+            var text = go.AddComponent<Text>();
+            text.font = PickupCentFonts.Title;
+            text.text = title;
+            text.color = PickupCentPalette.WithAlpha(Color.white, 0.45f);
+            text.fontSize = 12;
+            text.fontStyle = FontStyle.Bold;
+            text.alignment = TextAnchor.MiddleLeft;
+        }
+
+        private void CreateToolRow(ToolManager.ToolType tool, string name, string desc)
+        {
+            var row = CreateListRow($"Tool_{tool}");
+            CreateLeft(row.transform, IconForTool(tool), name, desc, out var nameText, out var descText);
+            var right = CreateRight(row.transform);
+            var badge = CreateBadge(right, "장착중");
+            var bar = CreateMiniBar(right);
+            var repair = CreateSmallButton(right, "수리", 62f, () => { toolManager?.TryRepairTool(tool, scoreTracker); RefreshRows(); });
+            var action = CreateSmallButton(right, "장착", 80f, () =>
+            {
+                if (toolManager == null) return;
+                if (!toolManager.IsToolOwned(tool)) toolManager.TryPurchaseTool(tool, scoreTracker);
+                else toolManager.TryEquipTool(tool);
+                RefreshRows();
+            });
+
+            refreshers.Add(score =>
+            {
+                if (toolManager == null) return;
+                bool owned = toolManager.IsToolOwned(tool);
+                bool equipped = toolManager.IsToolEquipped(tool);
+                float dur = toolManager.GetToolDurability(tool);
+                float max = toolManager.GetToolMaxDurability(tool);
+                badge.SetActive(equipped);
+                bar.SetActive(tool != ToolManager.ToolType.Hand && owned);
+                SetMiniBar(bar, max <= 0f ? 0f : dur / max);
+                repair.gameObject.SetActive(tool != ToolManager.ToolType.Hand && owned);
+                repair.interactable = toolManager.CanRepairTool(tool) && score >= toolManager.GetToolRepairCost(tool);
+                action.interactable = !equipped && (owned || score >= toolManager.GetToolPurchaseCost(tool) || tool == ToolManager.ToolType.Hand);
+                SetButtonText(repair, $"수리 · {toolManager.GetToolRepairCost(tool)}");
+                SetButtonText(action, equipped ? "장착중" : owned ? "장착" : $"구매 · {toolManager.GetToolPurchaseCost(tool)}");
+                nameText.color = equipped ? PickupCentPalette.GoldBright : PickupCentPalette.Cream;
+                descText.text = tool == ToolManager.ToolType.Hand ? desc : owned ? $"{desc} · 내구도 {Mathf.CeilToInt(dur)}/{Mathf.CeilToInt(max)}" : desc;
+            });
+        }
+
+        private void CreateUpgradeDefinitionRow(UpgradeDefinition definition, string desc)
+        {
+            if (definition == null) return;
+
+            var row = CreateListRow($"Upgrade_{definition.type}");
+            CreateLeft(row.transform, "강", definition.upgradeName, desc, out _, out _);
+            var right = CreateRight(row.transform);
+            var levelText = CreateInlineText(right, "Lv.0/5", 12, PickupCentPalette.GoldBright, 52f);
+            var button = CreateSmallButton(right, "강화", 100f, () =>
+            {
+                upgradeManager?.TryPurchase(definition);
+                RefreshRows();
+            });
+
+            refreshers.Add(score =>
+            {
+                int level = upgradeManager != null ? upgradeManager.GetLevel(definition) : 0;
+                bool maxed = level >= definition.maxLevel;
+                int cost = maxed ? 0 : definition.GetCostForLevel(level);
+                levelText.text = $"Lv.{level}/{definition.maxLevel}";
+                SetButtonText(button, maxed ? "MAX" : score >= cost ? $"강화 · {cost}" : $"부족 · {cost}");
+                button.interactable = upgradeManager != null && !maxed && score >= cost;
+            });
+        }
+
+        private void CreatePassiveRow(string name, string desc, int baseCost, Func<int> getLevel, Action apply)
+        {
+            var row = CreateListRow($"Passive_{name}");
+            CreateLeft(row.transform, "✨", name, desc, out _, out _);
+            var right = CreateRight(row.transform);
+            var levelText = CreateInlineText(right, "Lv.0/5", 12, PickupCentPalette.GoldBright, 52f);
+            var button = CreateSmallButton(right, "업그레이드", 100f, () =>
+            {
+                int level = getLevel();
+                if (level >= MaxPassiveLevel || scoreTracker == null) return;
+                int cost = Cost(baseCost, level);
+                if (scoreTracker.Score < cost) return;
+                scoreTracker.Spend(cost, name);
+                apply();
+                RefreshRows();
+            });
+
+            refreshers.Add(score =>
+            {
+                int level = getLevel();
+                bool maxed = level >= MaxPassiveLevel;
+                int cost = maxed ? 0 : Cost(baseCost, level);
+                levelText.text = $"Lv.{level}/{MaxPassiveLevel}";
+                SetButtonText(button, maxed ? "MAX" : score >= cost ? $"구매 · {cost}" : $"부족 · {cost}");
+                button.interactable = !maxed && score >= cost;
+            });
+        }
+
+        private void CreateAutoDiggerRow()
+        {
+            var row = CreateListRow("AutoDigger");
+            CreateLeft(row.transform, "로", "자동 파기 장치", "구매 후 주기적으로 모래를 뒤져 소액을 벌어옵니다.", out var title, out var desc);
+            var right = CreateRight(row.transform);
+            var badge = CreateBadge(right, "작동중");
+            var bar = CreateMiniBar(right);
+            var repair = CreateSmallButton(right, "수리", 62f, () => { autoDigger?.TryRepair(scoreTracker); RefreshRows(); });
+            var action = CreateSmallButton(right, "구매", 92f, () => { autoDigger?.TryPurchase(scoreTracker); RefreshRows(); });
+
+            refreshers.Add(score =>
+            {
+                bool owned = autoDigger != null && autoDigger.Owned;
+                badge.SetActive(owned && autoDigger.Durability > 0f);
+                bar.SetActive(owned);
+                if (owned) SetMiniBar(bar, autoDigger.Durability / autoDigger.MaxDurability);
+                repair.gameObject.SetActive(owned);
+                repair.interactable = owned && autoDigger.RepairCost > 0 && score >= autoDigger.RepairCost;
+                action.interactable = !owned && autoDigger != null && score >= autoDigger.PurchaseCost;
+                SetButtonText(repair, owned ? $"수리 · {autoDigger.RepairCost}" : "수리");
+                SetButtonText(action, owned ? "구매완료" : $"구매 · {autoDigger?.PurchaseCost ?? 0}");
+                title.color = owned ? PickupCentPalette.GoldBright : PickupCentPalette.Cream;
+                if (owned) desc.text = $"{Mathf.CeilToInt(autoDigger.Durability)}/{Mathf.CeilToInt(autoDigger.MaxDurability)} · {autoDigger.CurrentInterval:0.0}초마다 +{autoDigger.CurrentIncome}원";
+            });
+
+            CreateAutoUpgradeRow("로봇 속도", "자동 장치 작동 간격이 짧아집니다.", 140, () => autoDigger?.SpeedLevel ?? 0, () => autoDigger != null && autoDigger.TryUpgradeSpeed(scoreTracker));
+            CreateAutoUpgradeRow("로봇 수익", "자동 장치가 한 번에 더 많이 벌어옵니다.", 160, () => autoDigger?.IncomeLevel ?? 0, () => autoDigger != null && autoDigger.TryUpgradeIncome(scoreTracker));
+            CreateAutoUpgradeRow("로봇 내구도", "자동 장치의 최대 내구도가 증가합니다.", 150, () => autoDigger?.DurabilityLevel ?? 0, () => autoDigger != null && autoDigger.TryUpgradeDurability(scoreTracker));
+        }
+
+        private void CreateAutoUpgradeRow(string name, string desc, int baseCost, Func<int> getLevel, Func<bool> purchase)
+        {
+            var row = CreateListRow($"AutoUpgrade_{name}");
+            CreateLeft(row.transform, "강", name, desc, out _, out _);
+            var right = CreateRight(row.transform);
+            var levelText = CreateInlineText(right, "Lv.0/5", 12, PickupCentPalette.GoldBright, 52f);
+            var button = CreateSmallButton(right, "강화", 90f, () => { purchase(); RefreshRows(); });
+            refreshers.Add(score =>
+            {
+                int level = getLevel();
+                bool owned = autoDigger != null && autoDigger.Owned;
+                bool maxed = level >= (autoDigger?.MaxUpgradeLevel ?? 5);
+                int cost = autoDigger != null ? autoDigger.GetUpgradeCost(level, baseCost) : Cost(baseCost, level);
+                levelText.text = $"Lv.{level}/{(autoDigger?.MaxUpgradeLevel ?? 5)}";
+                SetButtonText(button, !owned ? "장치 필요" : maxed ? "MAX" : score >= cost ? $"강화 · {cost}" : $"부족 · {cost}");
+                button.interactable = owned && !maxed && score >= cost;
+            });
+        }
+
+        private void CreateChildrenEventRow()
+        {
+            var row = CreateListRow("ChildrenEvent");
+            CreateLeft(row.transform, "이", "아이들 등장 이벤트", "구매 후 일정 주기로 지나가며 새 발견물을 흩뿌립니다.", out var title, out _);
+            var right = CreateRight(row.transform);
+            var status = CreateInlineText(right, "미구매", 12, PickupCentPalette.GoldBright, 62f);
+            var button = CreateSmallButton(right, "구매", 90f, () => { swarmEvent?.TryPurchase(scoreTracker); RefreshRows(); });
+            refreshers.Add(score =>
+            {
+                bool purchased = swarmEvent != null && swarmEvent.IsPurchased;
+                status.text = purchased ? (swarmEvent.IsEventRunning ? "진행중" : $"{swarmEvent.SecondsUntilNextEvent:F0}초") : "미구매";
+                SetButtonText(button, purchased ? "적용중" : $"구매 · {swarmEvent?.PurchaseCost ?? 0}");
+                button.interactable = !purchased && swarmEvent != null && score >= swarmEvent.PurchaseCost;
+                title.color = purchased ? PickupCentPalette.GoldBright : PickupCentPalette.Cream;
+            });
+        }
+
+        private GameObject CreateListRow(string name)
+        {
+            var row = new GameObject(name, typeof(RectTransform));
+            row.transform.SetParent(listContent, false);
+            row.AddComponent<LayoutElement>().preferredHeight = 67f;
+            var bg = row.AddComponent<Image>();
+            bg.sprite = ProceduralSprites.CreateRoundedRectSliced(48, 11f, PickupCentPalette.ListItemBg);
+            bg.type = Image.Type.Sliced;
+            var hlg = row.AddComponent<HorizontalLayoutGroup>();
+            hlg.padding = new RectOffset(12, 12, 9, 9);
+            hlg.spacing = 8f;
+            hlg.childAlignment = TextAnchor.MiddleLeft;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = true;
             return row;
         }
 
-        /// <summary>사이드패널에 상시 고정된 상점 열기 버튼. 여는 대상은 이제 인라인 섹션이 아니라
-        /// ModalLayer 위의 중앙 카드(modalRoot)다.</summary>
+        private Transform CreateLeft(Transform parent, string icon, string name, string desc, out Text nameText, out Text descText)
+        {
+            var left = new GameObject("RowLeft", typeof(RectTransform));
+            left.transform.SetParent(parent, false);
+            left.AddComponent<LayoutElement>().flexibleWidth = 1f;
+            var hlg = left.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 9f;
+            hlg.childAlignment = TextAnchor.MiddleLeft;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = true;
+
+            var iconGO = new GameObject("Icon", typeof(RectTransform));
+            iconGO.transform.SetParent(left.transform, false);
+            iconGO.AddComponent<LayoutElement>().preferredWidth = 30f;
+            var iconBg = iconGO.AddComponent<Image>();
+            iconBg.sprite = ProceduralSprites.CreateRoundedRectSliced(32, 8f, PickupCentPalette.WithAlpha(Color.black, 0.25f));
+            iconBg.type = Image.Type.Sliced;
+            var iconTextGO = new GameObject("IconText", typeof(RectTransform));
+            iconTextGO.transform.SetParent(iconGO.transform, false);
+            Stretch((RectTransform)iconTextGO.transform);
+            var iconText = iconTextGO.AddComponent<Text>();
+            iconText.font = PickupCentFonts.Default;
+            iconText.text = icon;
+            iconText.fontSize = 16;
+            iconText.alignment = TextAnchor.MiddleCenter;
+            iconText.color = PickupCentPalette.Cream;
+
+            var textCol = new GameObject("RowText", typeof(RectTransform));
+            textCol.transform.SetParent(left.transform, false);
+            textCol.AddComponent<LayoutElement>().flexibleWidth = 1f;
+            var vlg = textCol.AddComponent<VerticalLayoutGroup>();
+            vlg.spacing = 1f;
+            vlg.childAlignment = TextAnchor.MiddleLeft;
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = true;
+            vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
+
+            nameText = CreateInlineText(textCol.transform, name, 13, PickupCentPalette.Cream, 22f);
+            nameText.fontStyle = FontStyle.Bold;
+            descText = CreateInlineText(textCol.transform, desc, 11, PickupCentPalette.WithAlpha(Color.white, 0.55f), 20f);
+            return left.transform;
+        }
+
+        private Transform CreateRight(Transform parent)
+        {
+            var right = new GameObject("RowRight", typeof(RectTransform));
+            right.transform.SetParent(parent, false);
+            right.AddComponent<LayoutElement>().preferredWidth = 216f;
+            var hlg = right.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 6f;
+            hlg.childAlignment = TextAnchor.MiddleRight;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = true;
+            return right.transform;
+        }
+
+        private Text CreateInlineText(Transform parent, string value, int size, Color color, float width)
+        {
+            var go = new GameObject("Text", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            go.AddComponent<LayoutElement>().preferredWidth = width;
+            var text = go.AddComponent<Text>();
+            text.font = PickupCentFonts.Default;
+            text.text = value;
+            text.color = color;
+            text.fontSize = size;
+            text.alignment = TextAnchor.MiddleLeft;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            return text;
+        }
+
+        private GameObject CreateBadge(Transform parent, string value)
+        {
+            var go = new GameObject("Badge", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            go.AddComponent<LayoutElement>().preferredWidth = 54f;
+            var bg = go.AddComponent<Image>();
+            bg.sprite = ProceduralSprites.CreateRoundedRectSliced(32, 8f, PickupCentPalette.WithAlpha(PickupCentPalette.HighlightBorder, 0.25f));
+            bg.type = Image.Type.Sliced;
+            var textGO = new GameObject("Label", typeof(RectTransform));
+            textGO.transform.SetParent(go.transform, false);
+            Stretch((RectTransform)textGO.transform);
+            var text = textGO.AddComponent<Text>();
+            text.font = PickupCentFonts.Default;
+            text.text = value;
+            text.color = Color.white;
+            text.fontSize = 10;
+            text.fontStyle = FontStyle.Bold;
+            text.alignment = TextAnchor.MiddleCenter;
+            return go;
+        }
+
+        private GameObject CreateMiniBar(Transform parent)
+        {
+            var track = new GameObject("MiniBar", typeof(RectTransform));
+            track.transform.SetParent(parent, false);
+            track.AddComponent<LayoutElement>().preferredWidth = 40f;
+            var bg = track.AddComponent<Image>();
+            bg.sprite = ProceduralSprites.CreateRoundedRectSliced(16, 4f, PickupCentPalette.SecondaryButtonBg);
+            bg.type = Image.Type.Sliced;
+            var fill = new GameObject("Fill", typeof(RectTransform));
+            fill.transform.SetParent(track.transform, false);
+            var fillRt = (RectTransform)fill.transform;
+            fillRt.anchorMin = Vector2.zero;
+            fillRt.anchorMax = Vector2.one;
+            fillRt.offsetMin = Vector2.zero;
+            fillRt.offsetMax = Vector2.zero;
+            var img = fill.AddComponent<Image>();
+            img.sprite = ProceduralSprites.CreateRoundedRectSliced(16, 4f, PickupCentPalette.GoldBright);
+            img.type = Image.Type.Sliced;
+            return track;
+        }
+
+        private static void SetMiniBar(GameObject bar, float ratio)
+        {
+            var fill = bar.transform.Find("Fill") as RectTransform;
+            if (fill != null) fill.anchorMax = new Vector2(Mathf.Clamp01(ratio), 1f);
+        }
+
+        private Button CreateSmallButton(Transform parent, string label, float width, UnityEngine.Events.UnityAction onClick)
+        {
+            var go = new GameObject($"Button_{label}", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            go.AddComponent<LayoutElement>().preferredWidth = width;
+            return CreateFlatButton(go.transform, label, 12, PickupCentPalette.Gold, PickupCentPalette.Ink, onClick);
+        }
+
+        private Button CreateFlatButton(Transform parent, string label, int fontSize, Color bgColor, Color textColor, UnityEngine.Events.UnityAction onClick)
+        {
+            var image = parent.gameObject.AddComponent<Image>();
+            image.sprite = ProceduralSprites.CreateRoundedRectSliced(48, 10f, bgColor);
+            image.type = Image.Type.Sliced;
+            image.raycastTarget = true;
+
+            var button = parent.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            button.onClick.AddListener(onClick);
+
+            var labelGO = new GameObject("Label", typeof(RectTransform));
+            labelGO.transform.SetParent(parent, false);
+            Stretch((RectTransform)labelGO.transform);
+            var text = labelGO.AddComponent<Text>();
+            text.font = PickupCentFonts.Title;
+            text.text = label;
+            text.color = textColor;
+            text.fontStyle = FontStyle.Bold;
+            text.fontSize = fontSize;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.raycastTarget = false;
+            return button;
+        }
+
         private void CreateToggleButton(Transform sidePanel)
         {
-            var normalSprite = ProceduralSprites.CreateGradientButtonSliced(48, 12f,
-                PickupCentPalette.Gold, PickupCentPalette.WoodLight, 3f, PickupCentPalette.ButtonBottomBorder);
-            var pressedSprite = ProceduralSprites.CreateGradientButtonSliced(48, 12f,
-                PickupCentPalette.Gold, PickupCentPalette.WoodLight, 1f, PickupCentPalette.ButtonBottomBorder);
-
             var go = new GameObject("ShopToggleButton", typeof(RectTransform));
             go.transform.SetParent(sidePanel, false);
             go.AddComponent<LayoutElement>().preferredHeight = 44f;
-
-            var visual = UICanvasUtility.CreatePressableSurface(go.transform, normalSprite, pressedSprite,
-                out var button, out _);
-            button.onClick.AddListener(TogglePanel);
-
-            var labelGO = new GameObject("Label", typeof(RectTransform));
-            labelGO.transform.SetParent(visual.transform, false);
-            var labelRt = labelGO.GetComponent<RectTransform>();
-            labelRt.anchorMin = Vector2.zero;
-            labelRt.anchorMax = Vector2.one;
-            labelRt.offsetMin = Vector2.zero;
-            labelRt.offsetMax = Vector2.zero;
-            var label = labelGO.AddComponent<Text>();
-            label.font = PickupCentFonts.Title;
-            label.text = "상점";
-            label.color = PickupCentPalette.Ink;
-            label.fontStyle = FontStyle.Bold;
-            label.fontSize = 18;
-            label.alignment = TextAnchor.MiddleCenter;
+            var button = CreateFlatButton(go.transform, "상점", 14, PickupCentPalette.SecondaryButtonBg, PickupCentPalette.Cream, TogglePanel);
+            button.GetComponent<Image>().color = Color.white;
         }
 
         private void TogglePanel()
         {
-            if (modalRoot == null) return;
-            bool nowOpen = !modalRoot.activeSelf;
-            modalRoot.SetActive(nowOpen);
-            OnPanelToggled?.Invoke(nowOpen);
+            if (isOpen) ClosePanel();
+            else OpenPanel();
+        }
+
+        private void OpenPanel()
+        {
+            if (overlayRoot == null || isOpen) return;
+            isOpen = true;
+            overlayRoot.SetActive(true);
+            overlayRoot.transform.SetAsLastSibling();
+            activeTab = ShopTab.Tools;
+            BuildActiveContent();
+            PopupPauseManager.PushPause();
+            RefreshRows();
+            OnPanelToggled?.Invoke(true);
         }
 
         private void ClosePanel()
         {
-            if (modalRoot == null) return;
-            modalRoot.SetActive(false);
+            if (overlayRoot == null || !isOpen) return;
+            isOpen = false;
+            overlayRoot.SetActive(false);
+            PopupPauseManager.PopPause();
             OnPanelToggled?.Invoke(false);
         }
 
         private void Update()
         {
-            if (modalRoot == null || !modalRoot.activeSelf || scoreTracker == null || rows == null) return;
+            if (!isOpen) return;
+            RefreshRows();
+        }
 
-            foreach (var row in rows)
-                row?.Refresh(scoreTracker.Score);
+        private void RefreshRows()
+        {
+            int score = scoreTracker != null ? scoreTracker.Score : 0;
+            foreach (var refresher in refreshers)
+                refresher.Invoke(score);
+        }
+
+        private void ForceListLayout()
+        {
+            if (listContent == null) return;
+
+            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)listContent);
+            if (shopScroll == null) return;
+
+            Canvas.ForceUpdateCanvases();
+            shopScroll.verticalNormalizedPosition = 1f;
+        }
+
+#if UNITY_EDITOR
+        private void LogShopListDiagnostics()
+        {
+            if (listContent == null || overlayRoot == null) return;
+            int sourceCount = activeTab == ShopTab.Tools ? 4 : activeTab == ShopTab.Passives ? CountPassiveSources() : 5;
+            var contentRt = (RectTransform)listContent;
+            Debug.Log($"[ShopList] tab={activeTab}, source={sourceCount}, contentChildren={listContent.childCount}, contentSize={contentRt.rect.size}, overlayActive={overlayRoot.activeInHierarchy}, sibling={overlayRoot.transform.GetSiblingIndex()}");
+            for (int i = 0; i < listContent.childCount; i++)
+            {
+                var child = listContent.GetChild(i);
+                var rt = child as RectTransform;
+                var group = child.GetComponentInParent<CanvasGroup>();
+                Debug.Log($"[ShopList] row[{i}] name={child.name}, activeSelf={child.gameObject.activeSelf}, activeHierarchy={child.gameObject.activeInHierarchy}, size={(rt != null ? rt.rect.size : Vector2.zero)}, pos={(rt != null ? rt.anchoredPosition : Vector2.zero)}, scale={child.localScale}, alpha={(group != null ? group.alpha : 1f)}");
+            }
+        }
+
+        private int CountPassiveSources()
+        {
+            int count = 3;
+            if (upgradeManager?.DigStrengthDef != null) count++;
+            if (upgradeManager?.DigRangeDef != null) count++;
+            if (upgradeManager?.ShovelStabilityDef != null) count++;
+            if (upgradeManager?.DetectRangeDef != null) count++;
+            return count;
+        }
+#else
+        private void LogShopListDiagnostics() { }
+#endif
+        private void UpdateTabVisuals()
+        {
+            SetTab(toolsTabImage, activeTab == ShopTab.Tools);
+            SetTab(passivesTabImage, activeTab == ShopTab.Passives);
+            SetTab(autoTabImage, activeTab == ShopTab.Auto);
+        }
+
+        private static void SetTab(Image image, bool active)
+        {
+            if (image == null) return;
+            image.sprite = ProceduralSprites.CreateRoundedRectSliced(48, 10f, active ? PickupCentPalette.GoldBright : PickupCentPalette.SecondaryButtonBg);
+            image.color = Color.white;
+        }
+
+        private static void SetButtonText(Button button, string text)
+        {
+            var label = button.GetComponentInChildren<Text>();
+            if (label != null) label.text = text;
+        }
+
+        private static int Cost(int baseCost, int level) => Mathf.RoundToInt(baseCost * Mathf.Pow(1.55f, level));
+
+        private static string IconForTool(ToolManager.ToolType tool) => tool switch
+        {
+            ToolManager.ToolType.Hand => "손",
+            ToolManager.ToolType.Shovel => "삽",
+            ToolManager.ToolType.Rake => "갈",
+            ToolManager.ToolType.Detector => "탐",
+            _ => "?"
+        };
+
+        private static void Stretch(RectTransform rt)
+        {
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
         }
     }
 }
+
+
+
+
+
+

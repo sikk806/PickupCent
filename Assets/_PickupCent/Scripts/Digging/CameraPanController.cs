@@ -1,3 +1,4 @@
+﻿using PickupCent.UI;
 using UnityEngine;
 
 namespace PickupCent.Digging
@@ -25,6 +26,12 @@ namespace PickupCent.Digging
 
         private void Update()
         {
+            if (PopupPauseManager.IsPausedByPopup)
+            {
+                dragging = false;
+                return;
+            }
+
             if (Input.GetMouseButtonDown(1))
             {
                 dragging = true;
@@ -78,3 +85,6 @@ namespace PickupCent.Digging
         }
     }
 }
+
+
+
