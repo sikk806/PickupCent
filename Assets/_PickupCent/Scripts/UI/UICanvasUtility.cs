@@ -64,6 +64,32 @@ namespace PickupCent.UI
             return panelGO.transform;
         }
 
+        /// <summary>
+        /// 모달 팝업(어두운 배경 오버레이 + 가운데 뜨는 카드)을 올려놓는 최상위 레이어.
+        /// 항상 마지막 자식으로 유지해서 사이드패널/HUD보다 위에 그려지게 한다.
+        /// </summary>
+        public static Transform EnsureModalLayer()
+        {
+            var canvasGO = EnsureCanvas();
+            var existing = canvasGO.transform.Find("ModalLayer");
+            if (existing != null)
+            {
+                existing.SetAsLastSibling();
+                return existing;
+            }
+
+            var layerGO = new GameObject("ModalLayer", typeof(RectTransform));
+            layerGO.transform.SetParent(canvasGO.transform, false);
+            var rt = layerGO.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+            layerGO.transform.SetAsLastSibling();
+
+            return layerGO.transform;
+        }
+
         /// <summary>화면 상단 중앙에 HUD 알약들이 가로로 나란히 놓이는 컨테이너.</summary>
         public static Transform EnsureTopHudRow()
         {

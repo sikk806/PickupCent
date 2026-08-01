@@ -8,12 +8,12 @@ using UnityEngine.UI;
 namespace PickupCent.UI
 {
     /// <summary>
-    /// 스타일 가이드 3장: 맵 위에는 최소한의 정보(지역명/보유 금액/타이머/장착 도구)만 알약(pill) 배지로
-    /// 화면 상단 중앙에 띄운다. 예전엔 점수만 보여줬지만(HudController) 이제 이 4가지를 전부 여기서
-    /// 만든다 — 예전에 타이머 전용이었던 SwarmEventCountdownText는 이 안으로 흡수됐다.
+    /// 맵 위에는 최소한의 정보(지역명·보유 금액/타이머/장착 도구)만 알약(pill) 배지로 화면 상단
+    /// 중앙에 띄운다. 참고 목업(플레이 화면 캡처) 1번 이미지에 맞춰, 지역명과 보유 금액을 "동네 놀이터 ·
+    /// 999,999원"처럼 하나의 알약에 묶어서 보여준다(이전엔 각각 별도 알약이었다).
     /// 데이터 자체(점수/타이머/도구)는 그대로 ScoreTracker/ChildrenSwarmEvent/ToolManager에서 읽어올 뿐,
     /// 새 게임 로직은 없다. "도구 내구도"에 대응하는 실제 데이터가 없어서, 그 자리는 현재 장착 도구
-    /// 이름으로 대체했다(README/코드 어디에도 내구도 수치는 없음).
+    /// 이름으로 대체했다(목업엔 내구도 막대가 있지만 실제 수치가 없어 막대는 그리지 않았다).
     /// </summary>
     public class HudController : MonoBehaviour
     {
@@ -22,11 +22,11 @@ namespace PickupCent.UI
         [SerializeField] private ToolManager toolManager;
 
         [Tooltip("맵 위 지역명 배지에 표시할 고정 라벨(README 기준 스테이지1 = 놀이터)")]
-        [SerializeField] private string regionName = "놀이터";
+        [SerializeField] private string regionName = "동네 놀이터";
 
-        private Text scoreValueText;
-        private Text timerValueText;
-        private Text toolValueText;
+        private Text regionMoneyText;
+        private Text timerText;
+        private Text toolText;
 
         /// <summary>
         /// 알약 텍스트에 쓰는 폰트. 아직 커스텀 폰트 에셋이 없어 지금은 Unity 내장 기본 폰트를 쓴다.
@@ -38,6 +38,9 @@ namespace PickupCent.UI
         private string lastTimerText;
         private ToolManager.ToolType lastTool = (ToolManager.ToolType)(-1);
 
+        private readonly string goldHex = ColorUtility.ToHtmlStringRGB(PickupCentPalette.GoldBright);
+        private readonly string blueHex = ColorUtility.ToHtmlStringRGB(PickupCentPalette.AccentBlue);
+
         private void Awake()
         {
             if (scoreTracker == null) scoreTracker = FindFirstObjectByType<ScoreTracker>();
@@ -48,6 +51,27 @@ namespace PickupCent.UI
 
             CleanUpLegacyElements();
             BuildPills();
+            EnsureAuxiliaryUI();
+        }
+
+        /// <summary>
+        /// DropTableController/ComboDisplayController는 씬에 미리 배치해 둘 방법이 없어서(에디터
+        /// 접근 없이 스크립트로만 작업하는 상황) 스스로 만들어져야 하는데, 이전엔 그 생성 코드를
+        /// UICanvasUtility.EnsureCanvas()의 "캔버스를 처음 만드는" 분기 안에 넣어뒀었다. 문제는
+        /// "UICanvas"가 이미 씬 파일에 저장돼 있어서(예전 Test5UISetup 실행 결과) Play할 때마다
+        /// EnsureCanvas()가 그 분기를 타지 않고 곧장 기존 오브젝트를 찾아 반환해 버렸다는 것 —
+        /// 그래서 두 컴포넌트가 생성되는 코드 자체가 한 번도 실행되지 않았다. ItemSpawner가
+        /// ComboManager를 만드는 방식(이미 씬에 확실히 있는 컴포넌트의 Awake에서, 없으면 직접
+        /// AddComponent)과 똑같은 패턴으로 여기서 다시 연결한다 — HudController는 UIManagers
+        /// GameObject에 붙어 씬에 이미 존재하므로 Awake가 매번 확실히 실행된다.
+        /// </summary>
+        private static void EnsureAuxiliaryUI()
+        {
+            if (FindFirstObjectByType<DropTableController>() == null)
+                new GameObject("DropTableController").AddComponent<DropTableController>();
+
+            if (FindFirstObjectByType<ComboDisplayController>() == null)
+                new GameObject("ComboDisplayController").AddComponent<ComboDisplayController>();
         }
 
         /// <summary>지금은 커스텀 폰트 에셋이 없어 Unity 내장 레거시 폰트(Arial 계열)를 대신 쓴다.</summary>
@@ -72,20 +96,24 @@ namespace PickupCent.UI
         {
             var row = UICanvasUtility.EnsureTopHudRow();
 
-            CreatePill(row, "지역", regionName, PickupCentPalette.Cream, out _);
-            CreatePill(row, "금액", "0", PickupCentPalette.GoldBright, out scoreValueText);
-            CreatePill(row, "다음 이벤트", "-", PickupCentPalette.GoldBright, out timerValueText);
-            CreatePill(row, "도구", "손", PickupCentPalette.GoldBright, out toolValueText);
+            regionMoneyText = CreatePill(row, "RegionMoney", 236, PickupCentPalette.Gold, FormatRegionMoney(0));
+            timerText = CreatePill(row, "Timer", 108, PickupCentPalette.WoodLight, "00:00");
+            toolText = CreatePill(row, "Tool", 150, PickupCentPalette.WoodLight, "손");
+        }
+
+        private string FormatRegionMoney(int score)
+        {
+            // 웹 프로토타입 기준: 지역명은 옅은 하늘색(.region-name), 금액만 골드(.num)로 강조한다.
+            return $"<color=#{blueHex}>{regionName}</color> · <b><color=#{goldHex}>{score:N0}원</color></b>";
         }
 
         /// <summary>알약(pill) 배지 하나를 만든다 — 옅은 흰 테두리 + 짙은 갈색 반투명 배경 위에
-        /// "라벨(Cream, 얇게) + 값(강조색, 굵게)"을 가로로 배치한다.</summary>
-        private void CreatePill(Transform parent, string label, string initialValue, Color valueColor, out Text valueText)
+        /// 작은 강조색 아이콘 원 + 리치 텍스트(굵게/색 강조는 &lt;b&gt;/&lt;color&gt; 태그로 표현) 한 줄을 배치한다.</summary>
+        private Text CreatePill(Transform parent, string name, int pillWidth, Color iconColor, string initialText)
         {
             const int pillHeight = 40;
-            const int pillWidth = 176;
 
-            var pillGO = new GameObject($"Pill_{label}", typeof(RectTransform));
+            var pillGO = new GameObject($"Pill_{name}", typeof(RectTransform));
             pillGO.transform.SetParent(parent, false);
             var pillRt = pillGO.GetComponent<RectTransform>();
             pillRt.sizeDelta = new Vector2(pillWidth, pillHeight);
@@ -110,67 +138,82 @@ namespace PickupCent.UI
             var contentRt = contentGO.GetComponent<RectTransform>();
             contentRt.anchorMin = Vector2.zero;
             contentRt.anchorMax = Vector2.one;
-            contentRt.offsetMin = new Vector2(14f, 0f);
+            contentRt.offsetMin = new Vector2(12f, 0f);
             contentRt.offsetMax = new Vector2(-14f, 0f);
             var hlg = contentGO.AddComponent<HorizontalLayoutGroup>();
-            hlg.spacing = 6f;
-            hlg.childAlignment = TextAnchor.MiddleCenter;
+            hlg.spacing = 8f;
+            hlg.childAlignment = TextAnchor.MiddleLeft;
             hlg.childControlWidth = true;
             hlg.childControlHeight = true;
             hlg.childForceExpandWidth = false;
             hlg.childForceExpandHeight = true;
 
-            var labelGO = new GameObject("Label", typeof(RectTransform));
-            labelGO.transform.SetParent(contentGO.transform, false);
-            var labelText = labelGO.AddComponent<Text>();
-            labelText.font = defaultFont;
-            labelText.text = label;
-            labelText.fontSize = 15;
-            labelText.alignment = TextAnchor.MiddleLeft;
-            labelText.color = PickupCentPalette.Cream;
-            labelGO.AddComponent<LayoutElement>().flexibleWidth = 1;
+            // IconSlot은 흐름 항목(HorizontalLayoutGroup의 세로 늘리기 대상)이고, 실제 원(Icon)은
+            // 고정 정사각형으로 가운데 앵커링해서 세로로 늘어난 타원이 되지 않게 한다.
+            var iconSlotGO = new GameObject("IconSlot", typeof(RectTransform));
+            iconSlotGO.transform.SetParent(contentGO.transform, false);
+            iconSlotGO.AddComponent<LayoutElement>().preferredWidth = 18f;
+
+            var iconGO = new GameObject("Icon", typeof(RectTransform));
+            iconGO.transform.SetParent(iconSlotGO.transform, false);
+            var iconRt = iconGO.GetComponent<RectTransform>();
+            iconRt.anchorMin = new Vector2(0.5f, 0.5f);
+            iconRt.anchorMax = new Vector2(0.5f, 0.5f);
+            iconRt.sizeDelta = new Vector2(16f, 16f);
+            var iconImage = iconGO.AddComponent<Image>();
+            iconImage.sprite = ProceduralSprites.CreateCircle(32, iconColor, 1f);
 
             var valueGO = new GameObject("Value", typeof(RectTransform));
             valueGO.transform.SetParent(contentGO.transform, false);
-            valueText = valueGO.AddComponent<Text>();
+            var valueText = valueGO.AddComponent<Text>();
             valueText.font = defaultFont;
-            valueText.text = initialValue;
-            valueText.fontSize = 17;
-            valueText.fontStyle = FontStyle.Bold;
-            valueText.alignment = TextAnchor.MiddleRight;
-            valueText.color = valueColor;
-            valueGO.AddComponent<LayoutElement>().preferredWidth = 56;
+            valueText.text = initialText;
+            valueText.fontSize = 16;
+            valueText.alignment = TextAnchor.MiddleLeft;
+            valueText.color = PickupCentPalette.Cream;
+            valueText.supportRichText = true;
+            valueGO.AddComponent<LayoutElement>().flexibleWidth = 1;
+
+            return valueText;
         }
 
         private void Update()
         {
-            if (scoreTracker != null && scoreValueText != null && scoreTracker.Score != lastScore)
+            if (scoreTracker != null && regionMoneyText != null && scoreTracker.Score != lastScore)
             {
                 lastScore = scoreTracker.Score;
-                scoreValueText.text = lastScore.ToString();
+                regionMoneyText.text = FormatRegionMoney(lastScore);
             }
 
-            if (swarmEvent != null && timerValueText != null)
+            if (swarmEvent != null && timerText != null)
             {
-                string text = swarmEvent.IsEventRunning ? "진행중" : $"{swarmEvent.SecondsUntilNextEvent:F0}초";
+                string text = swarmEvent.IsEventRunning ? "진행중" : FormatTimer(swarmEvent.SecondsUntilNextEvent);
                 if (text != lastTimerText)
                 {
                     lastTimerText = text;
-                    timerValueText.text = text;
+                    timerText.text = text;
                 }
             }
 
-            if (toolManager != null && toolValueText != null && toolManager.CurrentTool != lastTool)
+            if (toolManager != null && toolText != null && toolManager.CurrentTool != lastTool)
             {
                 lastTool = toolManager.CurrentTool;
-                toolValueText.text = lastTool switch
+                toolText.text = lastTool switch
                 {
                     ToolManager.ToolType.Hand => "손",
                     ToolManager.ToolType.Shovel => "삽",
-                    ToolManager.ToolType.Detector => "탐지기",
+                    ToolManager.ToolType.Detector => "금속탐지기",
                     _ => lastTool.ToString()
                 };
             }
+        }
+
+        private static string FormatTimer(float seconds)
+        {
+            int total = Mathf.Max(0, Mathf.CeilToInt(seconds));
+            int minutes = total / 60;
+            int secs = total % 60;
+            return $"{minutes:00}:{secs:00}";
         }
     }
 }

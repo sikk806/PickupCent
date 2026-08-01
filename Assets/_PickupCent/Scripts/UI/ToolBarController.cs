@@ -84,14 +84,37 @@ namespace PickupCent.UI
             hlg.childForceExpandWidth = false;
             hlg.childForceExpandHeight = true;
 
+            // entry.icon은 아직 실제 아트가 연결되지 않아 비어있다 — 그동안은 도구별로 색이 다른
+            // 원형 스와치를 대신 넣어서 최소한 손/삽/금속탐지기가 서로 구분되게 한다(전부 같은
+            // 골드 그라디언트 버튼 배경만 있으면 구분이 안 됐던 문제). IconSlot 안에 고정 24x24
+            // 정사각형으로 앵커링해서 HorizontalLayoutGroup의 세로 늘리기로 인해 원이 타원으로
+            // 찌그러지지 않도록 한다.
+            var iconSlotGO = new GameObject("IconSlot", typeof(RectTransform));
+            iconSlotGO.transform.SetParent(contentGO.transform, false);
+            iconSlotGO.AddComponent<LayoutElement>().preferredWidth = 24f;
+
+            var iconGO = new GameObject("Icon", typeof(RectTransform));
+            iconGO.transform.SetParent(iconSlotGO.transform, false);
+
             if (entry.icon != null)
             {
-                var iconGO = new GameObject("Icon", typeof(RectTransform));
-                iconGO.transform.SetParent(contentGO.transform, false);
+                var iconRt = iconGO.GetComponent<RectTransform>();
+                iconRt.anchorMin = Vector2.zero;
+                iconRt.anchorMax = Vector2.one;
+                iconRt.offsetMin = Vector2.zero;
+                iconRt.offsetMax = Vector2.zero;
                 var iconImage = iconGO.AddComponent<Image>();
                 iconImage.sprite = entry.icon;
                 iconImage.preserveAspect = true;
-                iconGO.AddComponent<LayoutElement>().preferredWidth = 24f;
+            }
+            else
+            {
+                var iconRt = iconGO.GetComponent<RectTransform>();
+                iconRt.anchorMin = new Vector2(0.5f, 0.5f);
+                iconRt.anchorMax = new Vector2(0.5f, 0.5f);
+                iconRt.sizeDelta = new Vector2(20f, 20f);
+                var iconImage = iconGO.AddComponent<Image>();
+                iconImage.sprite = ProceduralSprites.CreateCircle(36, ToolIconColorFor(entry.tool), 1f);
             }
 
             var labelGO = new GameObject("Label", typeof(RectTransform));
@@ -113,6 +136,23 @@ namespace PickupCent.UI
             ToolManager.ToolType.Detector => "금속탐지기",
             _ => tool.ToString()
         };
+
+        /// <summary>실제 아이콘 아트가 연결되기 전까지 도구별 구분용으로 쓰는 임시 색상.</summary>
+        private static Color ToolIconColorFor(ToolManager.ToolType tool)
+        {
+            return tool switch
+            {
+                ToolManager.ToolType.Hand => HexColor("#C99A6D"),
+                ToolManager.ToolType.Shovel => HexColor("#6FA8DC"),
+                ToolManager.ToolType.Detector => HexColor("#E0C341"),
+                _ => PickupCentPalette.WoodLight
+            };
+        }
+
+        private static Color HexColor(string hex)
+        {
+            return ColorUtility.TryParseHtmlString(hex, out var c) ? c : Color.white;
+        }
 
         private void Update()
         {

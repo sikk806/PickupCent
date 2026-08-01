@@ -1235,7 +1235,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &1202963906
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3078,8 +3078,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b198486d3ea17c49848288b12ee2f98, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PickupCent.UI.SwarmEventCountdownText
-  swarmEvent: {fileID: 1468750138}
-  text: {fileID: 2110439142}
 --- !u!114 &2110439142
 MonoBehaviour:
   m_ObjectHideFlags: 0

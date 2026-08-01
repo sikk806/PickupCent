@@ -6,7 +6,7 @@ using UnityEngine.UI;
 namespace PickupCent.UI
 {
     /// <summary>아이템 습득 시 "이름 +가치" 텍스트를 잠깐 띄운다. ItemSpawner.OnItemPickedUp을 구독.
-    /// 스타일 가이드에 맞춰 상단 HUD 알약 바로 아래에 금색 강조 알약(pill) 배지로 표시한다 —
+    /// 참고 목업(2번 이미지)에 맞춰 연노랑 배경의 말풍선(꼬리 달린 팝업)으로 표시한다 —
     /// 어떤 이벤트에 반응해서 무엇을 보여주는지는 그대로, 모양만 바뀐 것이다.</summary>
     public class PickupFeedbackController : MonoBehaviour
     {
@@ -22,6 +22,7 @@ namespace PickupCent.UI
             if (itemSpawner == null) itemSpawner = FindFirstObjectByType<ItemSpawner>();
             if (itemSpawner != null) itemSpawner.OnItemPickedUp += HandlePickedUp;
 
+            CleanUpLegacyElements();
             BuildUI();
         }
 
@@ -30,24 +31,35 @@ namespace PickupCent.UI
             if (itemSpawner != null) itemSpawner.OnItemPickedUp -= HandlePickedUp;
         }
 
+        /// <summary>Test5UISetup(예전 에디터 메뉴)가 만들어 뒀던 습득 피드백 텍스트는 이제 이 컴포넌트가
+        /// 새로 만든 알약(pill)으로 완전히 대체됐다 — 안 쓰는 옛 텍스트 오브젝트를 지운다.</summary>
+        private void CleanUpLegacyElements()
+        {
+            var oldFeedback = GameObject.Find("PickupFeedbackText");
+            if (oldFeedback != null) Destroy(oldFeedback);
+        }
+
         private void BuildUI()
         {
             var canvasGO = UICanvasUtility.EnsureCanvas();
 
-            const int width = 220;
-            const int height = 36;
+            const int width = 200;
+            const int bodyHeight = 44;
+            const int tailHeight = 10;
+            const float cornerRadius = 12f;
 
             pillGO = new GameObject("PickupFeedback", typeof(RectTransform));
             pillGO.transform.SetParent(canvasGO.transform, false);
             var rt = pillGO.GetComponent<RectTransform>();
             rt.anchorMin = new Vector2(0.5f, 1f);
             rt.anchorMax = new Vector2(0.5f, 1f);
-            rt.pivot = new Vector2(0.5f, 1f);
-            rt.anchoredPosition = new Vector2(0f, -70f);
-            rt.sizeDelta = new Vector2(width, height);
+            rt.pivot = new Vector2(0.5f, 0f);
+            rt.anchoredPosition = new Vector2(0f, -100f);
+            rt.sizeDelta = new Vector2(width, bodyHeight + tailHeight);
 
             var borderImage = pillGO.AddComponent<Image>();
-            borderImage.sprite = ProceduralSprites.CreatePill(width, height, PickupCentPalette.ButtonBottomBorder);
+            borderImage.sprite = ProceduralSprites.CreateSpeechBubble(width, bodyHeight, tailHeight, cornerRadius,
+                PickupCentPalette.PopupBorder);
 
             var bgGO = new GameObject("Background", typeof(RectTransform));
             bgGO.transform.SetParent(pillGO.transform, false);
@@ -56,20 +68,22 @@ namespace PickupCent.UI
             bgRt.anchorMax = Vector2.one;
             bgRt.offsetMin = new Vector2(2f, 2f);
             bgRt.offsetMax = new Vector2(-2f, -2f);
-            bgGO.AddComponent<Image>().sprite = ProceduralSprites.CreatePill(width - 4, height - 4, PickupCentPalette.PanelBgSolid);
+            var bgImage = bgGO.AddComponent<Image>();
+            bgImage.sprite = ProceduralSprites.CreateSpeechBubble(width - 4, bodyHeight - 4, Mathf.Max(1, tailHeight - 2),
+                Mathf.Max(1f, cornerRadius - 2f), PickupCentPalette.PopupBg);
 
             var textGO = new GameObject("Text", typeof(RectTransform));
             textGO.transform.SetParent(bgGO.transform, false);
             var textRt = textGO.GetComponent<RectTransform>();
             textRt.anchorMin = Vector2.zero;
             textRt.anchorMax = Vector2.one;
-            textRt.offsetMin = Vector2.zero;
-            textRt.offsetMax = Vector2.zero;
+            textRt.offsetMin = new Vector2(10f, tailHeight);
+            textRt.offsetMax = new Vector2(-10f, -6f);
             feedbackText = textGO.AddComponent<Text>();
             feedbackText.font = PickupCentFonts.Title;
             feedbackText.fontStyle = FontStyle.Bold;
             feedbackText.fontSize = 18;
-            feedbackText.color = PickupCentPalette.GoldBright;
+            feedbackText.color = PickupCentPalette.PopupText;
             feedbackText.alignment = TextAnchor.MiddleCenter;
 
             pillGO.SetActive(false);
