@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using PickupCent.Digging;
 using PickupCent.Economy;
@@ -86,7 +86,7 @@ namespace PickupCent.Upgrades
                     break;
 
                 case UpgradeDefinition.UpgradeType.DigRange:
-                    sandMask?.AddBrushRadius(def.effectPerLevel);
+                    toolManager?.AddBrushRadiusBonus(def.effectPerLevel);
                     break;
 
                 case UpgradeDefinition.UpgradeType.ShovelStability:
@@ -112,3 +112,4 @@ namespace PickupCent.Upgrades
         public UpgradeDefinition DetectRangeDef => detectRangeDef;
     }
 }
+

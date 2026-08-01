@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using PickupCent.Common;
 using PickupCent.Digging;
 using PickupCent.Economy;
@@ -7,16 +7,14 @@ using UnityEngine;
 namespace PickupCent.Events
 {
     /// <summary>
-    /// 일정 주기로 아이 무리를 대표하는 오브젝트 하나가 맵 오른쪽 밖에서 등장해 왼쪽 밖으로
-    /// 빠져나갈 때까지 가로로 이동한다. 지나간 영역(가로 밴드 = 오브젝트 높이 두께 x 이동한 전체 구간)을
-    /// 기록해서, 다 지나가면 ItemSpawner.TriggerSpawnBurst()를 호출해 스폰 버스트를 일으킨다.
-    /// 이동 범위는 화면(카메라 뷰포트)이 아니라 SandMaskController.FieldSize(맵 전체 크기) 기준이다 —
-    /// 맵이 화면보다 커진 뒤에도 카메라가 어디를 보고 있든 맵 전체를 가로지른다.
+    /// 아이 무리 이벤트. 상점에서 구매된 뒤에만 주기 타이머가 돌고, 구매 전에는 게임 시작부터 발생하지 않는다.
     /// </summary>
     [DefaultExecutionOrder(50)]
     public class ChildrenSwarmEvent : MonoBehaviour
     {
-        [Header("주기 / 이동 (예시값)")]
+        [Header("구매 / 주기 / 이동")]
+        [SerializeField] private int purchaseCost = 280;
+        [SerializeField] private bool purchased;
         [SerializeField] private float intervalSeconds = 30f;
         [SerializeField] private float moveSpeed = 4f;
 
@@ -41,13 +39,12 @@ namespace PickupCent.Events
         private float minX, maxX;
         private float bandCenterY;
 
+        public bool IsPurchased => purchased;
         public bool IsEventRunning => running;
-
-        /// <summary>아이 무리 이벤트가 시작될 때(등장) 발생 — 사운드 등 알림용.</summary>
+        public int PurchaseCost => purchaseCost;
         public event Action OnSwarmStarted;
-        public float SecondsUntilNextEvent => running ? 0f : Mathf.Max(0f, intervalSeconds - timer);
+        public float SecondsUntilNextEvent => !purchased || running ? 0f : Mathf.Max(0f, intervalSeconds - timer);
 
-        // --- 디버그 패널 등에서 실시간 조절하기 위한 get/set 프로퍼티 ---
         public float IntervalSeconds
         {
             get => intervalSeconds;
@@ -67,6 +64,23 @@ namespace PickupCent.Events
             CreateVisual();
         }
 
+        public bool TryPurchase(ScoreTracker tracker)
+        {
+            if (purchased) return true;
+            if (tracker == null) return false;
+            if (tracker.Score < purchaseCost)
+            {
+                Debug.Log($"[ChildrenSwarmEvent] 구매 실패: 필요 {purchaseCost}, 보유 {tracker.Score}");
+                return false;
+            }
+
+            tracker.Spend(purchaseCost, "아이들 이벤트 구매");
+            purchased = true;
+            timer = 0f;
+            Debug.Log("[ChildrenSwarmEvent] 구매 완료 — 아이들 이벤트 타이머 시작");
+            return true;
+        }
+
         private void CreateVisual()
         {
             visual = new GameObject("ChildrenSwarmVisual");
@@ -79,6 +93,8 @@ namespace PickupCent.Events
 
         private void Update()
         {
+            if (!purchased) return;
+
             if (!running)
             {
                 timer += Time.deltaTime;

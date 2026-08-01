@@ -1,4 +1,4 @@
-Shader "PickupCent/SandBrush"
+﻿Shader "PickupCent/SandBrush"
 {
     // 브러시 중심에서 멀수록 덜 깎이는 감쇠를 적용해 마스크를 침식시키는 풀스크린 블릿 셰이더.
     // _ErosionAmount = 강도 ÷ 경도 로 계산된 1회 침식 비율(0~1), 브러시 중심에서 이 값만큼,
@@ -50,7 +50,7 @@ Shader "PickupCent/SandBrush"
                 return o;
             }
 
-            fixed4 frag(v2f i) : SV_Target
+            float4 frag(v2f i) : SV_Target
             {
                 float m = tex2D(_MainTex, i.uv).r;
 
@@ -59,9 +59,10 @@ Shader "PickupCent/SandBrush"
                 falloff = pow(falloff, max(_FalloffPower, 0.0001));
 
                 m = saturate(m - _ErosionAmount * falloff);
-                return fixed4(m, 0, 0, 1);
+                return float4(m, 0, 0, 1);
             }
             ENDCG
         }
     }
 }
+

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using PickupCent.Digging;
 using UnityEngine;
@@ -7,19 +7,11 @@ namespace PickupCent.Economy
 {
     /// <summary>
     /// itemPool(5종 ItemDefinition)을 가중치 기반으로 뽑아 필드 위에 기본적으로 itemCount개를 유지한다.
-    /// 평상시 스폰 위치는 지형지물(TerrainFeature) 주변으로 편향되거나 필드 전체에서 균등하게 뽑힌다.
-    /// 습득되면 점수를 지급하고, 활성 개수가 기본치 이하일 때만 같은 오브젝트를 재사용해 재배치한다
-    /// (파괴된 경우는 점수 없이 동일하게 처리). TriggerSpawnBurst()로 일시적으로 개수를 2배까지 늘릴 수 있고,
-    /// 그동안은 재보충을 멈춰서 습득할 때마다 자연스럽게 기본치로 줄어들게 한다.
     /// </summary>
     public class ItemSpawner : MonoBehaviour
     {
-        /// <summary>정상 습득(점수 지급)될 때마다 발생. UI 습득 피드백 텍스트가 구독한다.</summary>
         public event Action<ItemDefinition> OnItemPickedUp;
-        /// <summary>새 DiggableItem 오브젝트가 생성될 때(최초 채우기·버스트 추가 스폰 포함) 발생 —
-        /// 사운드 매니저가 그 아이템 인스턴스의 OnDestroyedByRisk/OnSpotted를 구독하는 데 쓴다.</summary>
         public event Action<DiggableItem> OnItemSpawned;
-        /// <summary>스폰 버스트로 아이템이 실제로 1개 이상 추가됐을 때 발생 — 사운드 등 알림용.</summary>
         public event Action OnSpawnBurst;
 
         [SerializeField] private SandMaskController sandMask;
@@ -36,11 +28,8 @@ namespace PickupCent.Economy
 
         private readonly List<DiggableItem> activeItems = new List<DiggableItem>();
         private float totalWeight;
+        private float rareFindWeightBonus;
 
-        // --- 디버그 패널 등에서 실시간 조절하기 위한 get/set 프로퍼티 ---
-
-        /// <summary>기본 유지 개수(Max). 낮추거나 높여도 기존 아이템을 즉시 강제로 맞추진 않고,
-        /// 이후의 습득/버스트 판정부터 새 값을 사용한다.</summary>
         public int ItemCount
         {
             get => itemCount;
@@ -75,22 +64,37 @@ namespace PickupCent.Economy
 
         private ItemDefinition PickWeighted()
         {
-            if (itemPool == null || itemPool.Length == 0 || totalWeight <= 0f) return null;
+            if (itemPool == null || itemPool.Length == 0) return null;
 
-            float r = UnityEngine.Random.value * totalWeight;
+            float adjustedTotal = 0f;
+            foreach (var def in itemPool)
+                if (def != null) adjustedTotal += AdjustedWeight(def);
+            if (adjustedTotal <= 0f) return null;
+
+            float r = UnityEngine.Random.value * adjustedTotal;
             float acc = 0f;
             foreach (var def in itemPool)
             {
                 if (def == null) continue;
-                acc += Mathf.Max(0f, def.spawnWeight);
+                acc += AdjustedWeight(def);
                 if (r <= acc) return def;
             }
             return itemPool[itemPool.Length - 1];
         }
 
-        // --- 스폰 위치 후보 ---
+        private float AdjustedWeight(ItemDefinition def)
+        {
+            float weight = Mathf.Max(0f, def.spawnWeight);
+            bool valuableOrSpecial = def.value >= 50 || !def.detectableByMetalDetector;
+            return valuableOrSpecial ? weight * (1f + rareFindWeightBonus) : weight;
+        }
 
-        /// <summary>burstBand가 있으면 "지형지물 주변 + 방금 지나간 밴드"가 합쳐진 후보군에서, 없으면 평상시 후보군에서 고른다.</summary>
+        public void AddRareFindWeightBonus(float amount)
+        {
+            rareFindWeightBonus = Mathf.Max(0f, rareFindWeightBonus + amount);
+            Debug.Log($"[ItemSpawner] 발견 확률 보너스 +{amount:P0} → 현재 +{rareFindWeightBonus:P0}, 기본 totalWeight={totalWeight:0.##}");
+        }
+
         private Vector2 PickSpawnPosition(Rect? burstBand)
         {
             if (burstBand.HasValue)
@@ -154,8 +158,6 @@ namespace PickupCent.Economy
             return new Vector2(x, y);
         }
 
-        // --- 스폰 / 재보충 ---
-
         private void SpawnOne(Rect? burstBand)
         {
             var def = PickWeighted();
@@ -174,10 +176,6 @@ namespace PickupCent.Economy
             OnItemSpawned?.Invoke(item);
         }
 
-        /// <summary>
-        /// 아이 무리 이벤트가 지나간 뒤 호출. 지형지물 주변 + band를 합친 후보군으로,
-        /// 활성 아이템 개수가 기본치(itemCount)의 2배가 될 때까지 추가로 스폰한다.
-        /// </summary>
         public void TriggerSpawnBurst(Rect band)
         {
             int target = itemCount * 2;
@@ -205,10 +203,6 @@ namespace PickupCent.Economy
             ResolveItem(item);
         }
 
-        /// <summary>
-        /// 활성 개수가 기본치를 넘는 동안(버스트로 늘어난 여분)이면 재보충하지 않고 오브젝트를 없애서
-        /// 자연스럽게 기본치로 줄어들게 하고, 기본치 이하면 예전처럼 같은 자리에서 재배치한다.
-        /// </summary>
         private void ResolveItem(DiggableItem item)
         {
             if (activeItems.Count > itemCount)

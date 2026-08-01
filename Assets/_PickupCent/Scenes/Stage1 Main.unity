@@ -1,4 +1,4 @@
-%YAML 1.1
+﻿%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!29 &1
 OcclusionCullingSettings:
@@ -2697,9 +2697,9 @@ MonoBehaviour:
   textureResolution: 512
   strength: 3
   hardness: 2
-  brushRadius: 0.2
+  brushRadius: 0.5
   brushFalloffPower: 1
-  regenPerSecond: 1
+  regenPerSecond: 50
   sandColor: {r: 0.76, g: 0.65, b: 0.42, a: 1}
   erodedColor: {r: 0.35, g: 0.28, b: 0.16, a: 1}
   holeThresholdByte: 10
@@ -3207,3 +3207,4 @@ SceneRoots:
   - {fileID: 1468750139}
   - {fileID: 452628542}
   - {fileID: 1850422768}
+

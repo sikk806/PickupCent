@@ -1,4 +1,4 @@
-using Unity.Collections;
+﻿using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
@@ -26,17 +26,21 @@ namespace PickupCent.Digging
         [SerializeField] private float hardness = 2f;
 
         [Header("브러시")]
-        [SerializeField] private float brushRadius = 0.6f;
+        [SerializeField] private float brushRadius = 0.5f;
         [Tooltip("높을수록 브러시 중심에만 침식이 집중되고 가장자리는 덜 깎임")]
         [SerializeField] private float brushFalloffPower = 2f;
 
         [Header("되메워짐 (안 건드리면 서서히 회복)")]
         [Tooltip("초당 회복량 (0~255 기준)")]
-        [SerializeField] private float regenPerSecond = 6f;
+        [SerializeField] private float regenPerSecond = 50f;
 
         [Header("표시 (2단계 표현: 살짝 건드림=색만 어두워짐 / 확실히 뚫림=투명해짐)")]
         [SerializeField] private Color sandColor = new Color(0.76f, 0.65f, 0.42f);
         [SerializeField] private Color erodedColor = new Color(0.35f, 0.28f, 0.16f);
+        [Tooltip("모래판 밖, 즉 팔 수 없는 영역을 채우는 색. 상점 UI의 어두운 갈색 계열과 맞춘다.")]
+        [SerializeField] private Color nonDiggableColor = new Color(0.14f, 0.10f, 0.07f);
+        [Tooltip("필드보다 몇 배 넓게 조작 불가 배경판을 깔지 정한다.")]
+        [SerializeField] private float nonDiggableBackdropScale = 3f;
         [Tooltip("이 값(0~255) 이하로 떨어지면 '뚫린' 것으로 간주 (기획서 기준: 10)")]
         [SerializeField] private float holeThresholdByte = 10f;
         [SerializeField, Range(0.001f, 0.2f)] private float holeSoftEdge = 0.02f;
@@ -70,6 +74,8 @@ namespace PickupCent.Digging
         private MeshRenderer dugFloorRenderer;
         private Material dugFloorMat;
         private Texture2D fallbackDugFloorTex;
+        private MeshRenderer nonDiggableRenderer;
+        private Material nonDiggableMat;
 
         private float readbackTimer;
         private bool readbackPending;
@@ -78,11 +84,15 @@ namespace PickupCent.Digging
         private int cpuCacheBytesPerPixel = 1;
         private bool loggedReadbackDiagnostics;
 
-        // 마스크는 색이 아니라 데이터(침식량)이므로 항상 sRGB 없는 8비트 단일 채널로 만든다.
-        // RenderTextureFormat.R8 + 프로젝트의 sRGB 색공간 설정을 그대로 두면 Unity가
-        // 내부적으로 R8_SRGB를 요청했다가(미지원) RGBA32로 조용히 폴백하는 경우가 있어(콘솔 경고 참고),
-        // GraphicsFormat을 직접 지정해서 그 폴백 경로 자체를 피한다.
-        private static readonly GraphicsFormat MaskGraphicsFormat = GraphicsFormat.R8_UNorm;
+        // 마스크는 색이 아니라 데이터(침식량)이므로 sRGB 없는 단일 채널 포맷으로 만든다.
+        // 되메워짐은 프레임당 1/255보다 작은 값도 누적되어야 해서 R16을 우선 사용하고,
+        // 지원되지 않는 플랫폼에서만 R8로 폴백한다.
+        private static readonly GraphicsFormat PreferredMaskGraphicsFormat = GraphicsFormat.R16_UNorm;
+        private static readonly GraphicsFormat FallbackMaskGraphicsFormat = GraphicsFormat.R8_UNorm;
+        private static GraphicsFormat MaskGraphicsFormat =>
+            SystemInfo.IsFormatSupported(PreferredMaskGraphicsFormat, GraphicsFormatUsage.Render)
+                ? PreferredMaskGraphicsFormat
+                : FallbackMaskGraphicsFormat;
 
         private float lastStrength, lastHardness;
 
@@ -137,6 +147,7 @@ namespace PickupCent.Digging
             SetupTextures();
             SetupMaterials();
             EnsureTerrainTextureWrapModes();
+            SetupNonDiggableBackdrop();
             SetupDugFloorBackground();
             LogDugFloorTextureInfo();
             lastStrength = strength;
@@ -150,6 +161,23 @@ namespace PickupCent.Digging
             if (sandTexture != null) sandTexture.wrapMode = TextureWrapMode.Repeat;
             if (wetTexture != null) wetTexture.wrapMode = TextureWrapMode.Repeat;
             if (dugFloorTexture != null) dugFloorTexture.wrapMode = TextureWrapMode.Repeat;
+        }
+
+        private void SetupNonDiggableBackdrop()
+        {
+            var bgGO = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            bgGO.name = "NonDiggableBackdrop";
+            var col = bgGO.GetComponent<Collider>();
+            if (col != null) Destroy(col);
+
+            bgGO.transform.SetParent(transform, false);
+            bgGO.transform.localPosition = new Vector3(0f, 0f, DugFloorZOffset + 0.25f);
+            bgGO.transform.localScale = Vector3.one * Mathf.Max(1f, nonDiggableBackdropScale);
+
+            nonDiggableRenderer = bgGO.GetComponent<MeshRenderer>();
+            nonDiggableMat = new Material(Shader.Find("Unlit/Color"));
+            nonDiggableMat.color = nonDiggableColor;
+            nonDiggableRenderer.material = nonDiggableMat;
         }
 
         /// <summary>
@@ -179,6 +207,7 @@ namespace PickupCent.Digging
         private void RefreshDugFloorBackground()
         {
             if (dugFloorMat == null) return;
+            if (nonDiggableMat != null) nonDiggableMat.color = nonDiggableColor;
 
             if (dugFloorTexture != null)
             {
@@ -223,13 +252,14 @@ namespace PickupCent.Digging
 
         private RenderTexture CreateMaskRT()
         {
-            if (!SystemInfo.IsFormatSupported(MaskGraphicsFormat, FormatUsage.Render))
+            var graphicsFormat = MaskGraphicsFormat;
+            if (!SystemInfo.IsFormatSupported(graphicsFormat, GraphicsFormatUsage.Render))
             {
-                Debug.LogWarning($"[SandMask] {MaskGraphicsFormat}이 이 플랫폼에서 Render 용도로 지원되지 않습니다. " +
+                Debug.LogWarning($"[SandMask] {graphicsFormat}이 이 플랫폼에서 Render 용도로 지원되지 않습니다. " +
                                   "Unity가 다른 포맷으로 대체할 수 있으니 아래 실제 생성된 graphicsFormat 로그를 확인하세요.");
             }
 
-            var desc = new RenderTextureDescriptor(textureResolution, textureResolution, MaskGraphicsFormat, 0)
+            var desc = new RenderTextureDescriptor(textureResolution, textureResolution, graphicsFormat, 0)
             {
                 sRGB = false,
                 msaaSamples = 1,
@@ -244,9 +274,9 @@ namespace PickupCent.Digging
             };
             rt.Create();
 
-            if (rt.graphicsFormat != MaskGraphicsFormat)
+            if (rt.graphicsFormat != graphicsFormat)
             {
-                Debug.LogWarning($"[SandMask] 요청한 포맷({MaskGraphicsFormat})과 실제 생성된 포맷" +
+                Debug.LogWarning($"[SandMask] 요청한 포맷({graphicsFormat})과 실제 생성된 포맷" +
                                   $"({rt.graphicsFormat})이 다릅니다. 체크포인트 판정용 리드백 코드는 " +
                                   "픽셀당 바이트 수를 자동으로 계산하므로 동작은 하지만, 값이 sRGB 보정을 " +
                                   "받을 수 있으니 가능하면 지원되는 GPU/플랫폼에서 확인하세요.");
@@ -332,6 +362,8 @@ namespace PickupCent.Digging
         /// <summary>월드 좌표 worldCenter에 "한 번 쓸기"(스트로크)를 적용한다.</summary>
         public void Erode(Vector2 worldCenter)
         {
+            if (!IsWorldInsideField(worldCenter)) return;
+
             Vector2 uv = WorldToUV(worldCenter);
             float ratio = ErosionRatio();
 
@@ -354,6 +386,12 @@ namespace PickupCent.Digging
             float u = local.x / fieldSize.x + 0.5f;
             float v = local.y / fieldSize.y + 0.5f;
             return new Vector2(u, v);
+        }
+
+        public bool IsWorldInsideField(Vector2 worldPos)
+        {
+            Vector2 uv = WorldToUV(worldPos);
+            return uv.x >= 0f && uv.x <= 1f && uv.y >= 0f && uv.y <= 1f;
         }
 
         private void RequestReadback()
@@ -416,6 +454,7 @@ namespace PickupCent.Digging
             if (rtA != null) rtA.Release();
             if (rtB != null) rtB.Release();
             if (fallbackDugFloorTex != null) Destroy(fallbackDugFloorTex);
+            if (nonDiggableMat != null) Destroy(nonDiggableMat);
         }
 
         private void OnDrawGizmosSelected()
@@ -425,3 +464,4 @@ namespace PickupCent.Digging
         }
     }
 }
+
