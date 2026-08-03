@@ -55,6 +55,18 @@ namespace PickupCent.UI
 
         private void CreateSideButton(Transform sidePanel)
         {
+            var existing = sidePanel.Find("PauseToggleButton");
+            if (existing != null)
+            {
+                var existingButton = existing.GetComponentInChildren<Button>();
+                if (existingButton != null)
+                {
+                    existingButton.onClick.RemoveListener(TogglePause);
+                    existingButton.onClick.AddListener(TogglePause);
+                }
+                return;
+            }
+
             var normalSprite = ProceduralSprites.CreateGradientButtonSliced(48, 12f,
                 PickupCentPalette.Gold, PickupCentPalette.WoodLight, 3f, PickupCentPalette.ButtonBottomBorder);
             var pressedSprite = ProceduralSprites.CreateGradientButtonSliced(48, 12f,
@@ -82,6 +94,14 @@ namespace PickupCent.UI
         private void CreateOverlay()
         {
             var stageRoot = UICanvasUtility.EnsureStageRoot();
+            var existing = stageRoot.Find("PauseOverlay");
+            if (existing != null)
+            {
+                overlayRoot = existing.gameObject;
+                WireExistingOverlay();
+                return;
+            }
+
             overlayRoot = new GameObject("PauseOverlay", typeof(RectTransform));
             overlayRoot.transform.SetParent(stageRoot, false);
             Stretch((RectTransform)overlayRoot.transform);
@@ -212,6 +232,29 @@ namespace PickupCent.UI
             text.alignment = TextAnchor.MiddleCenter;
         }
 
+        private void WireExistingOverlay()
+        {
+            moneyValueText = FindText("PauseModal/Stats/Stat_보유 금액/Value");
+            timeValueText = FindText("PauseModal/Stats/Stat_플레이 시간/Value");
+            comboValueText = FindText("PauseModal/Stats/Stat_최고 콤보/Value");
+            WireButton("PauseModal/Button_이어하기/Visual", ClosePause);
+            WireButton("PauseModal/Button_타이틀로 나가기/Visual", ReturnToTitle);
+        }
+
+        private Text FindText(string path)
+        {
+            var target = overlayRoot != null ? overlayRoot.transform.Find(path) : null;
+            return target != null ? target.GetComponent<Text>() : null;
+        }
+
+        private void WireButton(string path, UnityEngine.Events.UnityAction action)
+        {
+            var target = overlayRoot != null ? overlayRoot.transform.Find(path) : null;
+            var button = target != null ? target.GetComponent<Button>() : null;
+            if (button == null) return;
+            button.onClick.RemoveListener(action);
+            button.onClick.AddListener(action);
+        }
         private void TogglePause()
         {
             if (isOpen) ClosePause();
@@ -266,10 +309,4 @@ namespace PickupCent.UI
         }
     }
 }
-
-
-
-
-
-
 

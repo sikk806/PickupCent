@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using PickupCent.Common;
 using PickupCent.Digging;
 using UnityEngine;
@@ -39,7 +39,11 @@ namespace PickupCent.UI
         {
             if (entries == null) return;
 
-            var content = UICanvasUtility.CreateBlockCard(UICanvasUtility.EnsureSidePanel(), "도구");
+            var sidePanel = UICanvasUtility.EnsureSidePanel();
+            var existingContent = sidePanel.Find("Block_도구/Content");
+            if (existingContent != null && WireExistingButtons(existingContent)) return;
+
+            var content = UICanvasUtility.CreateBlockCard(sidePanel, "도구");
 
             foreach (var entry in entries)
             {
@@ -55,6 +59,25 @@ namespace PickupCent.UI
             }
         }
 
+        private bool WireExistingButtons(Transform content)
+        {
+            bool foundAny = false;
+            foreach (var entry in entries)
+            {
+                if (entry == null) continue;
+                var existing = content.Find($"ToolButton_{entry.tool}");
+                var button = existing != null ? existing.GetComponentInChildren<Button>() : null;
+                if (button == null) continue;
+                entry.button = button;
+                entry.background = button.targetGraphic as Image;
+                var tool = entry.tool;
+                button.onClick.RemoveAllListeners();
+                button.onClick.AddListener(() => toolManager.SwitchTool(tool));
+                foundAny = true;
+            }
+
+            return foundAny;
+        }
         private void CreateToolButton(Transform parent, ToolButtonEntry entry, out Button button, out Image background)
         {
             var normalSprite = ProceduralSprites.CreateGradientButtonSliced(48, 12f,
@@ -127,3 +150,4 @@ namespace PickupCent.UI
         }
     }
 }
+

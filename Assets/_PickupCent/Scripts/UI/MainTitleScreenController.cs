@@ -45,6 +45,14 @@ namespace PickupCent.UI
         private void BuildUI()
         {
             var stageRoot = UICanvasUtility.EnsureStageRoot();
+            var existing = stageRoot.Find("TitleScreen");
+            if (existing != null)
+            {
+                overlayRoot = existing.gameObject;
+                WireExistingButtons();
+                return;
+            }
+
             overlayRoot = new GameObject("TitleScreen", typeof(RectTransform));
             overlayRoot.transform.SetParent(stageRoot, false);
             Stretch((RectTransform)overlayRoot.transform);
@@ -141,6 +149,15 @@ namespace PickupCent.UI
             text.color = PickupCentPalette.WithAlpha(Color.white, 0.5f);
             text.fontSize = 12;
             text.alignment = TextAnchor.MiddleCenter;
+        }
+
+        private void WireExistingButtons()
+        {
+            var start = overlayRoot != null ? overlayRoot.transform.Find("Panel/StartButton/Visual") : null;
+            var button = start != null ? start.GetComponent<Button>() : null;
+            if (button == null) return;
+            button.onClick.RemoveListener(HideTitle);
+            button.onClick.AddListener(HideTitle);
         }
 
         private void ShowTitle()

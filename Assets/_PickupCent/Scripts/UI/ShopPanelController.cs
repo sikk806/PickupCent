@@ -68,6 +68,14 @@ namespace PickupCent.UI
         private void CreateOverlay()
         {
             var stageRoot = UICanvasUtility.EnsureStageRoot();
+            var existing = stageRoot.Find("ShopOverlay");
+            if (existing != null)
+            {
+                overlayRoot = existing.gameObject;
+                WireExistingOverlay();
+                return;
+            }
+
             overlayRoot = new GameObject("ShopOverlay", typeof(RectTransform));
             overlayRoot.transform.SetParent(stageRoot, false);
             Stretch((RectTransform)overlayRoot.transform);
@@ -208,6 +216,41 @@ namespace PickupCent.UI
             vlg.childForceExpandHeight = false;
             content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             shopScroll.content = contentRt;
+        }
+
+        private void WireExistingOverlay()
+        {
+            shopTabs = FindTransform("ShopModalPanel/ShopTabs");
+            toolsTabImage = FindImage("ShopModalPanel/ShopTabs/Tab_도구");
+            passivesTabImage = FindImage("ShopModalPanel/ShopTabs/Tab_패시브");
+            autoTabImage = FindImage("ShopModalPanel/ShopTabs/Tab_자동화");
+            var scrollTransform = FindTransform("ShopModalPanel/ShopList");
+            shopScroll = scrollTransform != null ? scrollTransform.GetComponent<ScrollRect>() : null;
+            listContent = FindTransform("ShopModalPanel/ShopList/Viewport/Content");
+            WireButton("ShopModalPanel/CloseButton", ClosePanel);
+            WireButton("ShopModalPanel/ShopTabs/Tab_도구", () => SelectTab(ShopTab.Tools));
+            WireButton("ShopModalPanel/ShopTabs/Tab_패시브", () => SelectTab(ShopTab.Passives));
+            WireButton("ShopModalPanel/ShopTabs/Tab_자동화", () => SelectTab(ShopTab.Auto));
+        }
+
+        private Transform FindTransform(string path)
+        {
+            return overlayRoot != null ? overlayRoot.transform.Find(path) : null;
+        }
+
+        private Image FindImage(string path)
+        {
+            var target = FindTransform(path);
+            return target != null ? target.GetComponent<Image>() : null;
+        }
+
+        private void WireButton(string path, UnityEngine.Events.UnityAction action)
+        {
+            var target = FindTransform(path);
+            var button = target != null ? target.GetComponent<Button>() : null;
+            if (button == null) return;
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(action);
         }
 
         private void SelectTab(ShopTab tab)
@@ -611,6 +654,18 @@ namespace PickupCent.UI
 
         private void CreateToggleButton(Transform sidePanel)
         {
+            var existing = sidePanel.Find("ShopToggleButton");
+            if (existing != null)
+            {
+                var existingButton = existing.GetComponentInChildren<Button>();
+                if (existingButton != null)
+                {
+                    existingButton.onClick.RemoveListener(TogglePanel);
+                    existingButton.onClick.AddListener(TogglePanel);
+                }
+                return;
+            }
+
             var go = new GameObject("ShopToggleButton", typeof(RectTransform));
             go.transform.SetParent(sidePanel, false);
             go.AddComponent<LayoutElement>().preferredHeight = 44f;
@@ -738,9 +793,4 @@ namespace PickupCent.UI
         }
     }
 }
-
-
-
-
-
 
