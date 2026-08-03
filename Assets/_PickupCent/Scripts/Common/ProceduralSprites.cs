@@ -185,6 +185,117 @@ namespace PickupCent.Common
                 SpriteMeshType.FullRect, new Vector4(border, bottomBorder, border, border));
         }
 
+        /// <summary>
+        /// 습득 피드백 팝업(말풍선) 텍스처 — 둥근 사각형 몸체 아래에 아래쪽 중앙을 향해 뾰족한 꼬리를
+        /// 붙인 모양. bodyHeight는 몸체 높이, tailHeight는 꼬리 부분의 높이(세로)다.
+        /// pivot은 꼬리 끝(하단 중앙)으로 잡아서, UI에 배치할 때 꼬리가 가리키는 지점에 앵커링하기 쉽다.
+        /// </summary>
+        public static Sprite CreateSpeechBubble(int width, int bodyHeight, int tailHeight, float cornerRadius, Color color)
+        {
+            int totalHeight = bodyHeight + tailHeight;
+            var tex = new Texture2D(width, totalHeight, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+
+            var pixels = new Color[width * totalHeight];
+            float centerX = width * 0.5f;
+            float tailBaseHalfWidth = Mathf.Min(width * 0.15f, tailHeight * 0.9f);
+
+            for (int y = 0; y < totalHeight; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    float alpha;
+                    if (y >= tailHeight || tailHeight <= 0)
+                    {
+                        alpha = RoundedRectAlpha(x + 0.5f, (y - tailHeight) + 0.5f, width, bodyHeight, cornerRadius);
+                    }
+                    else
+                    {
+                        float halfWidthAtY = tailBaseHalfWidth * (y / (float)tailHeight);
+                        float dx = Mathf.Abs((x + 0.5f) - centerX);
+                        alpha = Mathf.Clamp01(0.5f - (dx - halfWidthAtY));
+                    }
+
+                    pixels[y * width + x] = new Color(color.r, color.g, color.b, color.a * alpha);
+                }
+            }
+
+            tex.SetPixels(pixels);
+            tex.Apply();
+
+            float border = cornerRadius + 2f;
+            return Sprite.Create(tex, new Rect(0, 0, width, totalHeight), new Vector2(0.5f, 0f), 100f, 0,
+                SpriteMeshType.FullRect, new Vector4(border, tailHeight + border, border, border));
+        }
+
+        /// <summary>
+        /// 화면 가장자리에 두르는 "테두리 프레임" 텍스처 — 가운데는 완전히 투명하고, 가장자리에서
+        /// thickness 픽셀만큼만 색이 채워진다. 9-slice(border=thickness)로 화면 전체 크기까지 늘려도
+        /// 테두리 두께가 일정하게 유지된다(가운데 투명 영역만 늘어남). 콤보 화염 효과 등에 쓴다.
+        /// </summary>
+        public static Sprite CreateFrameRing(int size, float thickness, Color color)
+        {
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+
+            var pixels = new Color[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float distFromEdge = Mathf.Min(Mathf.Min(x + 0.5f, y + 0.5f),
+                        Mathf.Min(size - (x + 0.5f), size - (y + 0.5f)));
+                    float alpha = Mathf.Clamp01(1f - (distFromEdge - thickness));
+                    pixels[y * size + x] = new Color(color.r, color.g, color.b, color.a * alpha);
+                }
+            }
+
+            tex.SetPixels(pixels);
+            tex.Apply();
+
+            float border = thickness + 2f;
+            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0,
+                SpriteMeshType.FullRect, new Vector4(border, border, border, border));
+        }
+
+        /// <summary>
+        /// 좌→우 가로 그라디언트가 채워진 알약(콤보 바 등 진행률 표시용). CreateGradientButton과 달리
+        /// 위→아래가 아니라 좌→우로 색이 바뀐다 — 웹 프로토타입의 .sp-bar-fill.combo
+        /// (linear-gradient(90deg, ...)) 스타일과 맞춘다.
+        /// </summary>
+        public static Sprite CreateHorizontalGradientPill(int width, int height, Color leftColor, Color rightColor)
+        {
+            var tex = new Texture2D(width, height, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+
+            float cornerRadius = height * 0.5f;
+            var pixels = new Color[width * height];
+            for (int x = 0; x < width; x++)
+            {
+                float t = width > 1 ? x / (float)(width - 1) : 1f;
+                Color rowColor = Color.Lerp(leftColor, rightColor, t);
+
+                for (int y = 0; y < height; y++)
+                {
+                    float alpha = RoundedRectAlpha(x + 0.5f, y + 0.5f, width, height, cornerRadius);
+                    pixels[y * width + x] = new Color(rowColor.r, rowColor.g, rowColor.b, alpha);
+                }
+            }
+
+            tex.SetPixels(pixels);
+            tex.Apply();
+            return Sprite.Create(tex, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f), 100f);
+        }
+
         /// <summary>둥근 사각형 SDF: 경계에서 ~1px 안티에일리어싱되는 0~1 알파를 반환한다.</summary>
         private static float RoundedRectAlpha(float px, float py, float width, float height, float radius)
         {

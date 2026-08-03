@@ -16,6 +16,7 @@ namespace PickupCent.Economy
 
         [SerializeField] private SandMaskController sandMask;
         [SerializeField] private ScoreTracker scoreTracker;
+        [SerializeField] private ComboManager comboManager;
         [SerializeField] private ItemDefinition[] itemPool;
         [SerializeField] private int itemCount = 5;
         [Tooltip("필드 가장자리로부터 스폰을 피할 여백(월드 단위)")]
@@ -42,10 +43,14 @@ namespace PickupCent.Economy
             set => terrainBiasChance = Mathf.Clamp01(value);
         }
 
+        /// <summary>드랍표 UI 등에서 확률 표시용으로 읽기 위한 접근자. 스폰 로직 자체는 그대로 private itemPool을 쓴다.</summary>
+        public IReadOnlyList<ItemDefinition> ItemPool => itemPool;
+
         private void Awake()
         {
             if (sandMask == null) sandMask = FindFirstObjectByType<SandMaskController>();
             if (scoreTracker == null) scoreTracker = FindFirstObjectByType<ScoreTracker>();
+            if (comboManager == null) comboManager = ComboManager.EnsureInstance();
             RecalculateWeights();
         }
 
@@ -193,7 +198,11 @@ namespace PickupCent.Economy
         private void HandleAcquired(DiggableItem item)
         {
             var def = item.Definition;
-            if (scoreTracker != null && def != null) scoreTracker.Add(def.value, def.itemName);
+            if (scoreTracker != null && def != null)
+            {
+                int amount = comboManager != null ? comboManager.RegisterPickupAndGetAmount(def) : def.value;
+                scoreTracker.Add(amount, def.itemName);
+            }
             if (def != null) OnItemPickedUp?.Invoke(def);
             ResolveItem(item);
         }

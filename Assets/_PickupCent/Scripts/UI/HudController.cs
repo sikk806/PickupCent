@@ -18,7 +18,7 @@ namespace PickupCent.UI
         [SerializeField] private ComboTracker comboTracker;
 
         [Tooltip("맵 위 지역명 배지에 표시할 고정 라벨(README 기준 스테이지1 = 놀이터)")]
-        [SerializeField] private string regionName = "놀이터";
+        [SerializeField] private string regionName = "동네 놀이터";
 
         private Text scoreValueText;
         private Text timerValueText;
@@ -31,6 +31,9 @@ namespace PickupCent.UI
         private string lastToolText;
         private ToolManager.ToolType lastTool = (ToolManager.ToolType)(-1);
 
+        private readonly string goldHex = ColorUtility.ToHtmlStringRGB(PickupCentPalette.GoldBright);
+        private readonly string blueHex = ColorUtility.ToHtmlStringRGB(PickupCentPalette.AccentBlue);
+
         private void Awake()
         {
             if (scoreTracker == null) scoreTracker = FindFirstObjectByType<ScoreTracker>();
@@ -42,6 +45,27 @@ namespace PickupCent.UI
 
             CleanUpLegacyElements();
             BuildPills();
+            EnsureAuxiliaryUI();
+        }
+
+        /// <summary>
+        /// DropTableController/ComboDisplayController는 씬에 미리 배치해 둘 방법이 없어서(에디터
+        /// 접근 없이 스크립트로만 작업하는 상황) 스스로 만들어져야 하는데, 이전엔 그 생성 코드를
+        /// UICanvasUtility.EnsureCanvas()의 "캔버스를 처음 만드는" 분기 안에 넣어뒀었다. 문제는
+        /// "UICanvas"가 이미 씬 파일에 저장돼 있어서(예전 Test5UISetup 실행 결과) Play할 때마다
+        /// EnsureCanvas()가 그 분기를 타지 않고 곧장 기존 오브젝트를 찾아 반환해 버렸다는 것 —
+        /// 그래서 두 컴포넌트가 생성되는 코드 자체가 한 번도 실행되지 않았다. ItemSpawner가
+        /// ComboManager를 만드는 방식(이미 씬에 확실히 있는 컴포넌트의 Awake에서, 없으면 직접
+        /// AddComponent)과 똑같은 패턴으로 여기서 다시 연결한다 — HudController는 UIManagers
+        /// GameObject에 붙어 씬에 이미 존재하므로 Awake가 매번 확실히 실행된다.
+        /// </summary>
+        private static void EnsureAuxiliaryUI()
+        {
+            if (FindFirstObjectByType<DropTableController>() == null)
+                new GameObject("DropTableController").AddComponent<DropTableController>();
+
+            if (FindFirstObjectByType<ComboDisplayController>() == null)
+                new GameObject("ComboDisplayController").AddComponent<ComboDisplayController>();
         }
 
         private static Font LoadDefaultFont()
@@ -73,7 +97,7 @@ namespace PickupCent.UI
             const int pillHeight = 40;
             const int pillWidth = 174;
 
-            var pillGO = new GameObject($"Pill_{label}", typeof(RectTransform));
+            var pillGO = new GameObject($"Pill_{name}", typeof(RectTransform));
             pillGO.transform.SetParent(parent, false);
             var pillRt = pillGO.GetComponent<RectTransform>();
             pillRt.sizeDelta = new Vector2(pillWidth, pillHeight);
@@ -98,11 +122,11 @@ namespace PickupCent.UI
             var contentRt = contentGO.GetComponent<RectTransform>();
             contentRt.anchorMin = Vector2.zero;
             contentRt.anchorMax = Vector2.one;
-            contentRt.offsetMin = new Vector2(14f, 0f);
+            contentRt.offsetMin = new Vector2(12f, 0f);
             contentRt.offsetMax = new Vector2(-14f, 0f);
             var hlg = contentGO.AddComponent<HorizontalLayoutGroup>();
-            hlg.spacing = 6f;
-            hlg.childAlignment = TextAnchor.MiddleCenter;
+            hlg.spacing = 8f;
+            hlg.childAlignment = TextAnchor.MiddleLeft;
             hlg.childControlWidth = true;
             hlg.childControlHeight = true;
             hlg.childForceExpandWidth = false;
@@ -120,7 +144,7 @@ namespace PickupCent.UI
 
             var valueGO = new GameObject("Value", typeof(RectTransform));
             valueGO.transform.SetParent(contentGO.transform, false);
-            valueText = valueGO.AddComponent<Text>();
+            var valueText = valueGO.AddComponent<Text>();
             valueText.font = defaultFont;
             valueText.text = initialValue;
             valueText.fontSize = 16;
@@ -146,7 +170,7 @@ namespace PickupCent.UI
                 if (text != lastTimerText)
                 {
                     lastTimerText = text;
-                    timerValueText.text = text;
+                    timerText.text = text;
                 }
             }
 
