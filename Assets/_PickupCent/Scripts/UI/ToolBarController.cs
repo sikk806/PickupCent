@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using PickupCent.Common;
 using PickupCent.Digging;
 using UnityEngine;
@@ -48,7 +48,7 @@ namespace PickupCent.UI
             foreach (var entry in entries)
             {
                 if (entry == null) continue;
-                if (entry.button != null) Destroy(entry.button.gameObject);
+                if (entry.button != null) UICanvasUtility.DestroyObjectSafe(entry.button.gameObject);
 
                 CreateToolButton(content, entry, out var button, out var background);
                 entry.button = button;
@@ -190,4 +190,3 @@ namespace PickupCent.UI
         }
     }
 }
-

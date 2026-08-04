@@ -1,4 +1,5 @@
-﻿using PickupCent.Common;
+using System.Collections.Generic;
+using PickupCent.Common;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -12,6 +13,24 @@ namespace PickupCent.UI
     /// </summary>
     public static class UICanvasUtility
     {
+        public static void DestroyObjectSafe(Object target)
+        {
+            if (target == null) return;
+            if (Application.isPlaying) Object.Destroy(target);
+            else Object.DestroyImmediate(target);
+        }
+
+        public static void ClearChildrenSafe(Transform parent)
+        {
+            if (parent == null) return;
+
+            var children = new List<GameObject>();
+            foreach (Transform child in parent)
+                children.Add(child.gameObject);
+
+            foreach (var child in children)
+                DestroyObjectSafe(child);
+        }
         public static GameObject EnsureCanvas()
         {
             var canvasGO = GameObject.Find("UICanvas");
@@ -43,6 +62,8 @@ namespace PickupCent.UI
             var existing = canvasGO.transform.Find("StageRoot");
             if (existing != null)
             {
+                ApplyStageRootLayout((RectTransform)existing);
+                EnsureStageBorders(existing);
                 EnsureNonPlayableScreenCover(canvasGO.transform, (RectTransform)existing);
                 existing.SetSiblingIndex(Mathf.Min(1, canvasGO.transform.childCount - 1));
                 return existing;
@@ -52,19 +73,47 @@ namespace PickupCent.UI
             rootGO.transform.SetParent(canvasGO.transform, false);
             rootGO.transform.SetSiblingIndex(Mathf.Min(1, canvasGO.transform.childCount - 1));
             var rt = rootGO.GetComponent<RectTransform>();
+            ApplyStageRootLayout(rt);
+            EnsureNonPlayableScreenCover(canvasGO.transform, rt);
+            rootGO.transform.SetSiblingIndex(Mathf.Min(1, canvasGO.transform.childCount - 1));
+            EnsureStageBorders(rootGO.transform);
+            return rootGO.transform;
+        }
+
+        private static void ApplyStageRootLayout(RectTransform rt)
+        {
             rt.anchorMin = new Vector2(0.5f, 0.5f);
             rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = new Vector2(-132f, 0f);
-            rt.sizeDelta = new Vector2(880f, 495f);
-            EnsureNonPlayableScreenCover(canvasGO.transform, rt);
-            rootGO.transform.SetSiblingIndex(Mathf.Min(1, canvasGO.transform.childCount - 1));
+            rt.anchoredPosition = new Vector2(-152f, 0f);
+            rt.sizeDelta = new Vector2(960f, 700f);
+        }
 
-            CreateStageBorder(rootGO.transform, "Top", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, 5f), new Vector2(900f, 10f));
-            CreateStageBorder(rootGO.transform, "Bottom", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, -5f), new Vector2(900f, 10f));
-            CreateStageBorder(rootGO.transform, "Left", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(-5f, 0f), new Vector2(10f, 515f));
-            CreateStageBorder(rootGO.transform, "Right", new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(5f, 0f), new Vector2(10f, 515f));
-            return rootGO.transform;
+        private static void EnsureStageBorders(Transform stageRoot)
+        {
+            EnsureStageBorder(stageRoot, "Top", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, 5f), new Vector2(980f, 10f));
+            EnsureStageBorder(stageRoot, "Bottom", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, -5f), new Vector2(980f, 10f));
+            EnsureStageBorder(stageRoot, "Left", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(-5f, 0f), new Vector2(10f, 720f));
+            EnsureStageBorder(stageRoot, "Right", new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(5f, 0f), new Vector2(10f, 720f));
+        }
+
+        private static void EnsureStageBorder(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size)
+        {
+            var existing = parent.Find($"StageBorder_{name}");
+            if (existing == null)
+            {
+                CreateStageBorder(parent, name, anchorMin, anchorMax, position, size);
+                return;
+            }
+
+            var rt = (RectTransform)existing;
+            rt.anchorMin = anchorMin;
+            rt.anchorMax = anchorMax;
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = position;
+            rt.sizeDelta = size;
+            var image = existing.GetComponent<Image>();
+            if (image != null) image.color = WoodBorderColor(name);
         }
 
         public static bool IsScreenPointInsideStage(Vector2 screenPoint)
@@ -196,7 +245,16 @@ namespace PickupCent.UI
         {
             var canvasGO = EnsureCanvas();
             var existing = canvasGO.transform.Find("SidePanel");
-            if (existing != null) return existing;
+            if (existing != null)
+            {
+                var existingRt = (RectTransform)existing;
+                existingRt.anchorMin = new Vector2(0.5f, 0.5f);
+                existingRt.anchorMax = new Vector2(0.5f, 0.5f);
+                existingRt.pivot = new Vector2(0.5f, 0.5f);
+                existingRt.anchoredPosition = new Vector2(465f, 0f);
+                existingRt.sizeDelta = new Vector2(250f, 700f);
+                return existing;
+            }
 
             var panelGO = new GameObject("SidePanel", typeof(RectTransform));
             panelGO.transform.SetParent(canvasGO.transform, false);
@@ -205,8 +263,8 @@ namespace PickupCent.UI
             rt.anchorMin = new Vector2(0.5f, 0.5f);
             rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = new Vector2(447f, 0f);
-            rt.sizeDelta = new Vector2(250f, 495f);
+            rt.anchoredPosition = new Vector2(465f, 0f);
+            rt.sizeDelta = new Vector2(250f, 700f);
 
             var layout = panelGO.AddComponent<VerticalLayoutGroup>();
             layout.spacing = 10f;
@@ -250,7 +308,16 @@ namespace PickupCent.UI
         {
             var stageRoot = EnsureStageRoot();
             var existing = stageRoot.Find("TopHudRow");
-            if (existing != null) return existing;
+            if (existing != null)
+            {
+                var existingRt = (RectTransform)existing;
+                existingRt.anchorMin = new Vector2(0.5f, 1f);
+                existingRt.anchorMax = new Vector2(0.5f, 1f);
+                existingRt.pivot = new Vector2(0.5f, 1f);
+                existingRt.anchoredPosition = new Vector2(0f, -10f);
+                existingRt.sizeDelta = new Vector2(936f, 40f);
+                return existing;
+            }
 
             var rowGO = new GameObject("TopHudRow", typeof(RectTransform));
             rowGO.transform.SetParent(stageRoot, false);
@@ -260,7 +327,7 @@ namespace PickupCent.UI
             rt.anchorMax = new Vector2(0.5f, 1f);
             rt.pivot = new Vector2(0.5f, 1f);
             rt.anchoredPosition = new Vector2(0f, -10f);
-            rt.sizeDelta = new Vector2(856f, 40f);
+            rt.sizeDelta = new Vector2(936f, 40f);
 
             var layout = rowGO.AddComponent<HorizontalLayoutGroup>();
             layout.spacing = 10f;
@@ -374,4 +441,3 @@ namespace PickupCent.UI
         }
     }
 }
-

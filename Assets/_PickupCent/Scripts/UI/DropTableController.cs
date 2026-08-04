@@ -134,7 +134,7 @@ namespace PickupCent.UI
         private void RefreshList()
         {
             if (listContainer == null) return;
-            foreach (Transform child in listContainer) Destroy(child.gameObject);
+            foreach (Transform child in listContainer) UICanvasUtility.DestroyObjectSafe(child.gameObject);
 
             if (itemSpawner == null || itemSpawner.ItemPool == null) return;
 

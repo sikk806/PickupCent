@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using PickupCent.Common;
 using PickupCent.Digging;
@@ -265,7 +265,7 @@ namespace PickupCent.UI
         {
             if (listContent == null) return;
             for (int i = listContent.childCount - 1; i >= 0; i--)
-                Destroy(listContent.GetChild(i).gameObject);
+                UICanvasUtility.DestroyObjectSafe(listContent.GetChild(i).gameObject);
             refreshers.Clear();
             UpdateTabVisuals();
 
@@ -793,4 +793,3 @@ namespace PickupCent.UI
         }
     }
 }
-

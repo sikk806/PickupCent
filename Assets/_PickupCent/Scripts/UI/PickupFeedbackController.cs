@@ -36,7 +36,7 @@ namespace PickupCent.UI
         private void CleanUpLegacyElements()
         {
             var oldFeedback = GameObject.Find("PickupFeedbackText");
-            if (oldFeedback != null) Destroy(oldFeedback);
+            if (oldFeedback != null) UICanvasUtility.DestroyObjectSafe(oldFeedback);
         }
 
         private void BuildUI()

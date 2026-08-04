@@ -1,4 +1,4 @@
-﻿using PickupCent.Common;
+using PickupCent.Common;
 using PickupCent.Digging;
 using PickupCent.Economy;
 using PickupCent.Events;
@@ -78,9 +78,9 @@ namespace PickupCent.UI
         private void CleanUpLegacyElements()
         {
             var oldScore = GameObject.Find("ScoreText");
-            if (oldScore != null) Destroy(oldScore);
+            if (oldScore != null) UICanvasUtility.DestroyObjectSafe(oldScore);
             var oldTimer = GameObject.Find("SwarmCountdownText");
-            if (oldTimer != null) Destroy(oldTimer);
+            if (oldTimer != null) UICanvasUtility.DestroyObjectSafe(oldTimer);
         }
 
         private void BuildPills()
@@ -144,7 +144,7 @@ namespace PickupCent.UI
 
             var valueGO = new GameObject("Value", typeof(RectTransform));
             valueGO.transform.SetParent(contentGO.transform, false);
-            var valueText = valueGO.AddComponent<Text>();
+            valueText = valueGO.AddComponent<Text>();
             valueText.font = defaultFont;
             valueText.text = initialValue;
             valueText.fontSize = 16;
@@ -170,7 +170,7 @@ namespace PickupCent.UI
                 if (text != lastTimerText)
                 {
                     lastTimerText = text;
-                    timerText.text = text;
+                    timerValueText.text = text;
                 }
             }
 
@@ -196,4 +196,3 @@ namespace PickupCent.UI
         }
     }
 }
-

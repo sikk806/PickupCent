@@ -11,8 +11,7 @@ namespace PickupCent.UI
     /// 그대로 참고해 구성한다 — 콤보 표시는 상단 HUD가 아니라 사이드패널의 별도 블록이다.
     /// ComboManager.OnComboChanged를 구독해서 표시만 담당한다 — 콤보 자체의 증가/리셋/배율 계산은
     /// 전부 ComboManager가 한다. 콤보가 10 미만이면 정확한 숫자를, 10 이상이면 10단위로 잘라서
-    /// 보여준다(예: 23 → "x20"). 콤보가 2 미만이면(0 또는 1) 블록 자체가 화면에서 사라진다
-    /// (프로토타입의 setCombo(combo<=1 → 숨김) 기준을 그대로 따름). 고콤보(기본 50 이상) 유지
+    /// 보여준다(예: 23 → "x20"). 콤보가 0/1이어도 블록은 상시 표시하고 값만 x0으로 낮춘다. 고콤보(기본 50 이상) 유지
     /// 동안엔 화면 테두리가 붉은빛/주황빛으로 펄스처럼 강조된다.
     /// </summary>
     public class ComboDisplayController : MonoBehaviour
@@ -48,9 +47,40 @@ namespace PickupCent.UI
         /// <summary>사이드패널의 콤보 상태 블록 — 제목 없이 콤보 행 + 바 + 최근 5개 히스토리 슬롯.</summary>
         private void BuildComboBlock()
         {
-            var content = UICanvasUtility.CreateBlockCard(UICanvasUtility.EnsureSidePanel(), string.Empty);
-            blockRoot = content.parent.gameObject;
+            var sidePanel = UICanvasUtility.EnsureSidePanel();
+            var existingBlock = sidePanel.Find("Block_Card");
+            Transform content;
 
+            if (existingBlock != null)
+            {
+                blockRoot = existingBlock.gameObject;
+                content = existingBlock.Find("Content");
+                if (content == null)
+                {
+                    var contentGO = new GameObject("Content", typeof(RectTransform));
+                    contentGO.transform.SetParent(existingBlock, false);
+                    var contentVlg = contentGO.AddComponent<VerticalLayoutGroup>();
+                    contentVlg.spacing = 12f;
+                    contentVlg.childControlWidth = true;
+                    contentVlg.childControlHeight = true;
+                    contentVlg.childForceExpandWidth = true;
+                    contentVlg.childForceExpandHeight = false;
+                    var fitter = contentGO.AddComponent<ContentSizeFitter>();
+                    fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+                    content = contentGO.transform;
+                }
+                else
+                {
+                    UICanvasUtility.ClearChildrenSafe(content);
+                }
+            }
+            else
+            {
+                content = UICanvasUtility.CreateBlockCard(sidePanel, string.Empty);
+                blockRoot = content.parent.gameObject;
+            }
+
+            blockRoot.SetActive(true);
             CreateComboRow(content);
             CreateComboBar(content);
             CreateHistoryRow(content);
@@ -142,7 +172,7 @@ namespace PickupCent.UI
         private void RebuildHistorySlots(IReadOnlyList<ItemDefinition> history)
         {
             if (historyRow == null) return;
-            foreach (Transform child in historyRow) Destroy(child.gameObject);
+            UICanvasUtility.ClearChildrenSafe(historyRow);
 
             for (int i = 0; i < 5; i++)
             {
@@ -174,19 +204,20 @@ namespace PickupCent.UI
         private void BuildFireBorder()
         {
             var canvasGO = UICanvasUtility.EnsureCanvas();
-
-            var go = new GameObject("ComboFireBorder", typeof(RectTransform));
+            var existing = canvasGO.transform.Find("ComboFireBorder");
+            var go = existing != null ? existing.gameObject : new GameObject("ComboFireBorder", typeof(RectTransform));
             go.transform.SetParent(canvasGO.transform, false);
             var rt = go.GetComponent<RectTransform>();
+            if (rt == null) rt = go.AddComponent<RectTransform>();
             rt.anchorMin = Vector2.zero;
             rt.anchorMax = Vector2.one;
             rt.offsetMin = Vector2.zero;
             rt.offsetMax = Vector2.zero;
 
-            fireBorderImage = go.AddComponent<Image>();
+            fireBorderImage = go.GetComponent<Image>();
+            if (fireBorderImage == null) fireBorderImage = go.AddComponent<Image>();
             fireBorderImage.sprite = ProceduralSprites.CreateFrameRing(64, 16f, PickupCentPalette.FireGlowDark);
             fireBorderImage.type = Image.Type.Sliced;
-            // 화면 전체를 덮는 장식 효과일 뿐이라 클릭(파기/버튼)을 가로채면 안 된다.
             fireBorderImage.raycastTarget = false;
 
             go.SetActive(false);
@@ -194,15 +225,11 @@ namespace PickupCent.UI
 
         private void HandleComboChanged(int combo)
         {
-            // 웹 프로토타입 setCombo() 기준: combo<=1이면 통째로 숨김(0뿐 아니라 1도 숨김).
-            bool visible = combo > 1;
-            blockRoot.SetActive(visible);
-            if (visible)
-            {
-                int displayValue = combo < 10 ? combo : (combo / 10) * 10;
-                comboText.text = "x" + displayValue;
-                RebuildHistorySlots(comboManager.History);
-            }
+            if (blockRoot != null) blockRoot.SetActive(true);
+
+            int displayValue = combo <= 1 ? 0 : combo < 10 ? combo : (combo / 10) * 10;
+            if (comboText != null) comboText.text = "x" + displayValue;
+            if (comboManager != null) RebuildHistorySlots(comboManager.History);
 
             fireActive = combo >= fireBorderThreshold;
             if (fireBorderImage != null) fireBorderImage.gameObject.SetActive(fireActive);
@@ -210,7 +237,7 @@ namespace PickupCent.UI
 
         private void Update()
         {
-            if (blockRoot != null && blockRoot.activeSelf && comboBarFillImage != null && comboManager != null)
+            if (blockRoot != null && comboBarFillImage != null && comboManager != null)
             {
                 comboBarFillImage.fillAmount = comboManager.RemainingRatio;
             }
