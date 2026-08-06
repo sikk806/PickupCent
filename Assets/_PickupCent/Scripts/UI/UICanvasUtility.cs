@@ -64,7 +64,6 @@ namespace PickupCent.UI
             {
                 ApplyStageRootLayout((RectTransform)existing);
                 EnsureStageBorders(existing);
-                EnsureNonPlayableScreenCover(canvasGO.transform, (RectTransform)existing);
                 existing.SetSiblingIndex(Mathf.Min(1, canvasGO.transform.childCount - 1));
                 return existing;
             }
@@ -74,7 +73,6 @@ namespace PickupCent.UI
             rootGO.transform.SetSiblingIndex(Mathf.Min(1, canvasGO.transform.childCount - 1));
             var rt = rootGO.GetComponent<RectTransform>();
             ApplyStageRootLayout(rt);
-            EnsureNonPlayableScreenCover(canvasGO.transform, rt);
             rootGO.transform.SetSiblingIndex(Mathf.Min(1, canvasGO.transform.childCount - 1));
             EnsureStageBorders(rootGO.transform);
             return rootGO.transform;
@@ -94,7 +92,7 @@ namespace PickupCent.UI
             EnsureStageBorder(stageRoot, "Top", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, 5f), new Vector2(980f, 10f));
             EnsureStageBorder(stageRoot, "Bottom", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, -5f), new Vector2(980f, 10f));
             EnsureStageBorder(stageRoot, "Left", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(-5f, 0f), new Vector2(10f, 720f));
-            EnsureStageBorder(stageRoot, "Right", new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(5f, 0f), new Vector2(10f, 720f));
+            EnsureStageBorder(stageRoot, "Right", new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(155f, 0f), new Vector2(315f, 720f));
         }
 
         private static void EnsureStageBorder(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size)
@@ -113,7 +111,7 @@ namespace PickupCent.UI
             rt.anchoredPosition = position;
             rt.sizeDelta = size;
             var image = existing.GetComponent<Image>();
-            if (image != null) image.color = WoodBorderColor(name);
+            if (image != null) image.color = PickupCentPalette.WoodDark;
         }
 
         public static bool IsScreenPointInsideStage(Vector2 screenPoint)
@@ -127,103 +125,92 @@ namespace PickupCent.UI
             return RectTransformUtility.RectangleContainsScreenPoint(stage, screenPoint, null);
         }
 
-        private static void EnsureNonPlayableScreenCover(Transform canvas, RectTransform stageRoot)
+        public static bool TryGetPlayableStageScreenRect(out Rect rect)
         {
-            var existing = canvas.Find("NonPlayableScreenCover");
-            GameObject rootGO;
-            NonPlayableScreenCoverController controller;
+            rect = default;
 
-            if (existing != null)
-            {
-                rootGO = existing.gameObject;
-                controller = rootGO.GetComponent<NonPlayableScreenCoverController>();
-                if (controller == null) controller = rootGO.AddComponent<NonPlayableScreenCoverController>();
-            }
-            else
-            {
-                rootGO = new GameObject("NonPlayableScreenCover", typeof(RectTransform));
-                rootGO.transform.SetParent(canvas, false);
-                var rt = (RectTransform)rootGO.transform;
-                rt.anchorMin = Vector2.zero;
-                rt.anchorMax = Vector2.one;
-                rt.offsetMin = Vector2.zero;
-                rt.offsetMax = Vector2.zero;
-                controller = rootGO.AddComponent<NonPlayableScreenCoverController>();
-            }
+            var canvasGO = GameObject.Find("UICanvas");
+            if (canvasGO == null) return false;
 
-            rootGO.transform.SetAsFirstSibling();
-            controller.Setup(stageRoot, PickupCentPalette.WithAlpha(PickupCentPalette.PanelBgSolid, 0.99f));
+            var stage = canvasGO.transform.Find("StageRoot") as RectTransform;
+            if (stage == null) return false;
+
+            stage.GetWorldCorners(StageCorners);
+            float left = RectTransformUtility.WorldToScreenPoint(null, StageCorners[0]).x;
+            float bottom = RectTransformUtility.WorldToScreenPoint(null, StageCorners[0]).y;
+            float right = RectTransformUtility.WorldToScreenPoint(null, StageCorners[2]).x;
+            float top = RectTransformUtility.WorldToScreenPoint(null, StageCorners[2]).y;
+
+            TrimByBorder(stage, "Left", ref left, ref bottom, ref right, ref top);
+            TrimByBorder(stage, "Right", ref left, ref bottom, ref right, ref top);
+            TrimByBorder(stage, "Bottom", ref left, ref bottom, ref right, ref top);
+            TrimByBorder(stage, "Top", ref left, ref bottom, ref right, ref top);
+
+            if (right <= left || top <= bottom) return false;
+
+            rect = Rect.MinMaxRect(left, bottom, right, top);
+            return true;
         }
 
-        private sealed class NonPlayableScreenCoverController : MonoBehaviour
+        public static bool TryGetPlayableStageNormalizedRect(out Rect rect)
         {
-            private RectTransform stageRoot;
-            private RectTransform coverRoot;
-            private readonly RectTransform[] panels = new RectTransform[4];
-            private Color color;
+            rect = default;
 
-            public void Setup(RectTransform stage, Color panelColor)
-            {
-                stageRoot = stage;
-                coverRoot = (RectTransform)transform;
-                color = panelColor;
+            var canvasGO = GameObject.Find("UICanvas");
+            if (canvasGO == null) return false;
 
-                for (int i = 0; i < panels.Length; i++)
-                {
-                    if (panels[i] == null) panels[i] = CreatePanel(i);
-                    var image = panels[i].GetComponent<Image>();
-                    image.color = color;
-                }
+            var stage = canvasGO.transform.Find("StageRoot") as RectTransform;
+            if (stage == null) return false;
 
-                UpdatePanels();
-            }
+            Rect stageRect = stage.rect;
+            if (stageRect.width <= 0f || stageRect.height <= 0f) return false;
 
-            private RectTransform CreatePanel(int index)
-            {
-                string name = index == 0 ? "Top" : index == 1 ? "Bottom" : index == 2 ? "Left" : "Right";
-                var go = new GameObject($"Cover_{name}", typeof(RectTransform), typeof(Image));
-                go.transform.SetParent(transform, false);
-                var image = go.GetComponent<Image>();
-                image.color = color;
-                image.raycastTarget = true;
-                return (RectTransform)go.transform;
-            }
+            float left = GetHorizontalBorderRatio(stage, "Left");
+            float right = 1f - GetHorizontalBorderRatio(stage, "Right");
+            float bottom = GetVerticalBorderRatio(stage, "Bottom");
+            float top = 1f - GetVerticalBorderRatio(stage, "Top");
 
-            private void LateUpdate() => UpdatePanels();
-
-            private void UpdatePanels()
-            {
-                if (stageRoot == null || coverRoot == null || panels[0] == null) return;
-
-                var canvasRt = transform.parent as RectTransform;
-                if (canvasRt == null) return;
-
-                var canvasRect = canvasRt.rect;
-                Vector3[] corners = new Vector3[4];
-                stageRoot.GetWorldCorners(corners);
-                for (int i = 0; i < corners.Length; i++)
-                    corners[i] = canvasRt.InverseTransformPoint(corners[i]);
-
-                float stageLeft = corners[0].x;
-                float stageBottom = corners[0].y;
-                float stageRight = corners[2].x;
-                float stageTop = corners[2].y;
-
-                SetPanel(panels[0], canvasRect.xMin, stageTop, canvasRect.width, Mathf.Max(0f, canvasRect.yMax - stageTop));
-                SetPanel(panels[1], canvasRect.xMin, canvasRect.yMin, canvasRect.width, Mathf.Max(0f, stageBottom - canvasRect.yMin));
-                SetPanel(panels[2], canvasRect.xMin, stageBottom, Mathf.Max(0f, stageLeft - canvasRect.xMin), Mathf.Max(0f, stageTop - stageBottom));
-                SetPanel(panels[3], stageRight, stageBottom, Mathf.Max(0f, canvasRect.xMax - stageRight), Mathf.Max(0f, stageTop - stageBottom));
-            }
-
-            private static void SetPanel(RectTransform rt, float x, float y, float width, float height)
-            {
-                rt.anchorMin = new Vector2(0.5f, 0.5f);
-                rt.anchorMax = new Vector2(0.5f, 0.5f);
-                rt.pivot = new Vector2(0.5f, 0.5f);
-                rt.anchoredPosition = new Vector2(x + width * 0.5f, y + height * 0.5f);
-                rt.sizeDelta = new Vector2(width, height);
-            }
+            rect = Rect.MinMaxRect(
+                Mathf.Clamp01(left),
+                Mathf.Clamp01(bottom),
+                Mathf.Clamp01(right),
+                Mathf.Clamp01(top));
+            return rect.width > 0f && rect.height > 0f;
         }
+
+        private static readonly Vector3[] StageCorners = new Vector3[4];
+
+        private static float GetHorizontalBorderRatio(RectTransform stage, string name)
+        {
+            var border = stage.Find($"StageBorder_{name}") as RectTransform;
+            if (border == null || stage.rect.width <= 0f) return 0f;
+            return Mathf.Clamp01(border.rect.width / stage.rect.width);
+        }
+
+        private static float GetVerticalBorderRatio(RectTransform stage, string name)
+        {
+            var border = stage.Find($"StageBorder_{name}") as RectTransform;
+            if (border == null || stage.rect.height <= 0f) return 0f;
+            return Mathf.Clamp01(border.rect.height / stage.rect.height);
+        }
+
+        private static void TrimByBorder(RectTransform stage, string name, ref float left, ref float bottom, ref float right, ref float top)
+        {
+            var border = stage.Find($"StageBorder_{name}") as RectTransform;
+            if (border == null) return;
+
+            border.GetWorldCorners(StageCorners);
+            float bLeft = RectTransformUtility.WorldToScreenPoint(null, StageCorners[0]).x;
+            float bBottom = RectTransformUtility.WorldToScreenPoint(null, StageCorners[0]).y;
+            float bRight = RectTransformUtility.WorldToScreenPoint(null, StageCorners[2]).x;
+            float bTop = RectTransformUtility.WorldToScreenPoint(null, StageCorners[2]).y;
+
+            if (name == "Left") left = Mathf.Max(left, bRight);
+            else if (name == "Right") right = Mathf.Min(right, bLeft);
+            else if (name == "Bottom") bottom = Mathf.Max(bottom, bTop);
+            else if (name == "Top") top = Mathf.Min(top, bBottom);
+        }
+
         private static void CreateStageBorder(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size)
         {
             var go = new GameObject($"StageBorder_{name}", typeof(RectTransform));
@@ -235,11 +222,10 @@ namespace PickupCent.UI
             rt.anchoredPosition = position;
             rt.sizeDelta = size;
             var image = go.AddComponent<Image>();
-            image.color = WoodBorderColor(name);
+            image.color = PickupCentPalette.WoodDark;
             image.raycastTarget = false;
         }
 
-        private static Color WoodBorderColor(string name) => name == "Top" || name == "Left" ? PickupCentPalette.WoodLight : PickupCentPalette.WoodDark;
         /// <summary>화면 오른쪽에 세로로 sp-block 카드가 쌓이는 사이드패널 컨테이너.</summary>
         public static Transform EnsureSidePanel()
         {
@@ -251,8 +237,10 @@ namespace PickupCent.UI
                 existingRt.anchorMin = new Vector2(0.5f, 0.5f);
                 existingRt.anchorMax = new Vector2(0.5f, 0.5f);
                 existingRt.pivot = new Vector2(0.5f, 0.5f);
-                existingRt.anchoredPosition = new Vector2(465f, 0f);
-                existingRt.sizeDelta = new Vector2(250f, 700f);
+                existingRt.anchoredPosition = new Vector2(490f, 0f);
+                existingRt.sizeDelta = new Vector2(250f, 670f);
+                ApplySidePanelLayout(existing.gameObject);
+                RefreshSidePanelLayout(existing);
                 return existing;
             }
 
@@ -263,18 +251,74 @@ namespace PickupCent.UI
             rt.anchorMin = new Vector2(0.5f, 0.5f);
             rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = new Vector2(465f, 0f);
-            rt.sizeDelta = new Vector2(250f, 700f);
+            rt.anchoredPosition = new Vector2(490f, 0f);
+            rt.sizeDelta = new Vector2(250f, 670f);
 
-            var layout = panelGO.AddComponent<VerticalLayoutGroup>();
+            ApplySidePanelLayout(panelGO);
+            RefreshSidePanelLayout(panelGO.transform);
+
+            return panelGO.transform;
+        }
+
+        private static void ApplySidePanelLayout(GameObject panelGO)
+        {
+            var layout = panelGO.GetComponent<VerticalLayoutGroup>() ?? panelGO.AddComponent<VerticalLayoutGroup>();
             layout.spacing = 10f;
             layout.childControlWidth = true;
-            layout.childControlHeight = true;
+            layout.childControlHeight = false;
             layout.childForceExpandWidth = true;
             layout.childForceExpandHeight = false;
             layout.childAlignment = TextAnchor.UpperCenter;
+        }
 
-            return panelGO.transform;
+        public static void RefreshSidePanelLayout(Transform sidePanel = null)
+        {
+            if (sidePanel == null)
+            {
+                var canvasGO = GameObject.Find("UICanvas");
+                sidePanel = canvasGO != null ? canvasGO.transform.Find("SidePanel") : null;
+            }
+
+            if (sidePanel == null) return;
+
+            ApplySidePanelLayout(sidePanel.gameObject);
+            ArrangeSidePanelChildren(sidePanel);
+
+            if (sidePanel is RectTransform rt)
+            {
+                Canvas.ForceUpdateCanvases();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+                LayoutRebuilder.MarkLayoutForRebuild(rt);
+            }
+        }
+
+        private static void ArrangeSidePanelChildren(Transform sidePanel)
+        {
+            var index = 0;
+            SetChildOrder(sidePanel.Find("ShopToggleButton"), ref index);
+            SetChildOrder(sidePanel.Find("PauseToggleButton"), ref index);
+            SetChildOrder(FindDropTableBlock(sidePanel), ref index);
+            SetChildOrder(sidePanel.Find("Block_Card"), ref index);
+            SetChildOrder(sidePanel.Find("MinimapPanel"), ref index);
+        }
+
+        private static Transform FindDropTableBlock(Transform sidePanel)
+        {
+            foreach (Transform child in sidePanel)
+            {
+                if (!child.name.StartsWith("Block_")) continue;
+                if (child.name == "Block_Card") continue;
+                return child;
+            }
+
+            return null;
+        }
+
+        private static void SetChildOrder(Transform child, ref int index)
+        {
+            if (child == null) return;
+            child.SetSiblingIndex(index);
+            index++;
         }
 
         /// <summary>

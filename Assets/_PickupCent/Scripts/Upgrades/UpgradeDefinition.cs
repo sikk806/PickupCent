@@ -12,7 +12,7 @@ namespace PickupCent.Upgrades
         {
             DigStrength,     // 파기 강도 강화 (손/삽 공통)
             DigRange,        // 파기 범위 강화 (브러시 반경)
-            ShovelStability, // 삽 안정성 강화 (파괴 확률 감소)
+            ShovelStability, // 삽 안정성 강화 (아이템 파손 확률 감소)
             DetectRange,     // 탐지 범위 강화
 
             /// <summary>

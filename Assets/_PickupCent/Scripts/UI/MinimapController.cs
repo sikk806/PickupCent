@@ -34,6 +34,8 @@ namespace PickupCent.UI
 
         private void Awake()
         {
+            if (!Application.isPlaying) return;
+
             if (targetCamera == null) targetCamera = Camera.main;
             if (sandMask == null) sandMask = FindFirstObjectByType<SandMaskController>();
 
@@ -42,7 +44,8 @@ namespace PickupCent.UI
 
         private void BuildUI()
         {
-            var canvasGO = GameObject.Find("UICanvas");
+            var sidePanel = UICanvasUtility.EnsureSidePanel();
+            var canvasGO = sidePanel.parent != null ? sidePanel.parent.gameObject : UICanvasUtility.EnsureCanvas();
             if (canvasGO == null)
             {
                 Debug.LogWarning("[MinimapController] UICanvas를 찾지 못해 미니맵을 만들 수 없습니다.");
@@ -54,15 +57,29 @@ namespace PickupCent.UI
             float minimapHeight = minimapWidth * aspect;
 
             // 패널(=테두리 역할, 바깥쪽)
-            var panelGO = new GameObject("MinimapPanel", typeof(RectTransform));
-            panelGO.transform.SetParent(canvasGO.transform, false);
+            var existingPanel = sidePanel.Find("MinimapPanel");
+            if (existingPanel == null) existingPanel = canvasGO.transform.Find("MinimapPanel");
+
+            var panelGO = existingPanel != null
+                ? existingPanel.gameObject
+                : new GameObject("MinimapPanel", typeof(RectTransform));
+
+            panelGO.transform.SetParent(sidePanel, false);
+            panelGO.transform.SetAsLastSibling();
+            UICanvasUtility.ClearChildrenSafe(panelGO.transform);
             panelRect = panelGO.GetComponent<RectTransform>();
-            panelRect.anchorMin = new Vector2(1f, 0f);
-            panelRect.anchorMax = new Vector2(1f, 0f);
-            panelRect.pivot = new Vector2(1f, 0f);
-            panelRect.anchoredPosition = new Vector2(-screenMargin.x, screenMargin.y);
+            panelRect.anchorMin = new Vector2(0.5f, 0f);
+            panelRect.anchorMax = new Vector2(0.5f, 0f);
+            panelRect.pivot = new Vector2(0.5f, 0f);
+            panelRect.anchoredPosition = new Vector2(0f, 0f);
             panelRect.sizeDelta = new Vector2(minimapWidth, minimapHeight);
-            panelGO.AddComponent<Image>().color = borderColor;
+            var layout = panelGO.GetComponent<LayoutElement>() ?? panelGO.AddComponent<LayoutElement>();
+            layout.ignoreLayout = true;
+            layout.preferredWidth = minimapWidth;
+            layout.preferredHeight = minimapHeight;
+            var panelImage = panelGO.GetComponent<Image>() ?? panelGO.AddComponent<Image>();
+            panelImage.color = borderColor;
+            UICanvasUtility.RefreshSidePanelLayout(sidePanel);
 
             // 배경(안쪽, 어두운 반투명 채우기) — 테두리보다 borderThickness만큼 인셋
             var bgGO = new GameObject("Background", typeof(RectTransform));

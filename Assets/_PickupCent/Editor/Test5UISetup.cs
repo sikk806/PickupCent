@@ -98,9 +98,6 @@ namespace PickupCent.EditorTools
             tbSo.ApplyModifiedPropertiesWithoutUndo();
 
             // --- 상점 토글 버튼 (우상단) ---
-            var shopToggleGO = CreateButton("ShopToggleButton", canvas, font, "상점", new Vector2(100, 40));
-            SetRect(shopToggleGO, new Vector2(1, 1), new Vector2(1, 1), new Vector2(1, 1), new Vector2(-20, -20), new Vector2(100, 40));
-
             // --- 습득 피드백 텍스트 (상단 중앙, 도구바 아래) ---
             var feedbackGO = CreateUIObject("PickupFeedbackText", canvas);
             var feedbackText = ConfigureText(feedbackGO.AddComponent<Text>(), font, string.Empty, 24,
@@ -156,7 +153,6 @@ namespace PickupCent.EditorTools
             shopSo.FindProperty("scoreTracker").objectReferenceValue = scoreTracker;
             shopSo.FindProperty("upgradeManager").objectReferenceValue = upgradeManager;
             shopSo.FindProperty("panelRoot").objectReferenceValue = panelGO;
-            shopSo.FindProperty("toggleButton").objectReferenceValue = shopToggleGO.GetComponent<Button>();
             shopSo.FindProperty("closeButton").objectReferenceValue = closeGO.GetComponent<Button>();
             var rowsProp = shopSo.FindProperty("rows");
             rowsProp.arraySize = 4;

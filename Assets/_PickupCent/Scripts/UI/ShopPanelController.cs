@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using PickupCent.Common;
 using PickupCent.Digging;
@@ -11,18 +11,17 @@ using UnityEngine.UI;
 namespace PickupCent.UI
 {
     /// <summary>
-    /// HTML 프로토타입의 shopScreen 구조에 맞춘 상점. 도구/강화/자동화 데이터를 런타임 UI로 표시한다.
+    /// HTML ?꾨줈?좏??낆쓽 shopScreen 援ъ“??留욎텣 ?곸젏. ?꾧뎄/媛뺥솕/?먮룞???곗씠?곕? ?고???UI濡??쒖떆?쒕떎.
     /// </summary>
     public class ShopPanelController : MonoBehaviour
     {
-        private enum ShopTab { Tools, Passives, Auto }
+        private enum ShopTab { Tools, Passives }
 
         [SerializeField] private ScoreTracker scoreTracker;
         [SerializeField] private UpgradeManager upgradeManager;
         [SerializeField] private ToolManager toolManager;
         [SerializeField] private ItemSpawner itemSpawner;
         [SerializeField] private ChildrenSwarmEvent swarmEvent;
-        [SerializeField] private AutoDiggerController autoDigger;
 
         private readonly List<Action<int>> refreshers = new List<Action<int>>();
         private GameObject overlayRoot;
@@ -31,7 +30,6 @@ namespace PickupCent.UI
         private ScrollRect shopScroll;
         private Image toolsTabImage;
         private Image passivesTabImage;
-        private Image autoTabImage;
         private ShopTab activeTab = ShopTab.Tools;
         private bool isOpen;
 
@@ -44,12 +42,13 @@ namespace PickupCent.UI
 
         private void Awake()
         {
+            if (!Application.isPlaying) return;
+
             if (scoreTracker == null) scoreTracker = FindFirstObjectByType<ScoreTracker>();
             if (upgradeManager == null) upgradeManager = FindFirstObjectByType<UpgradeManager>();
             if (toolManager == null) toolManager = FindFirstObjectByType<ToolManager>();
             if (itemSpawner == null) itemSpawner = FindFirstObjectByType<ItemSpawner>();
             if (swarmEvent == null) swarmEvent = FindFirstObjectByType<ChildrenSwarmEvent>();
-            if (autoDigger == null) autoDigger = FindFirstObjectByType<AutoDiggerController>();
             BuildUI();
         }
 
@@ -60,7 +59,9 @@ namespace PickupCent.UI
 
         private void BuildUI()
         {
-            CreateToggleButton(UICanvasUtility.EnsureSidePanel());
+            var sidePanel = UICanvasUtility.EnsureSidePanel();
+            CreateToggleButton(sidePanel);
+            UICanvasUtility.RefreshSidePanelLayout(sidePanel);
             CreateOverlay();
             BuildActiveContent();
         }
@@ -80,8 +81,8 @@ namespace PickupCent.UI
             overlayRoot.transform.SetParent(stageRoot, false);
             Stretch((RectTransform)overlayRoot.transform);
             var backdrop = overlayRoot.AddComponent<Image>();
-            backdrop.color = new Color(58f / 255f, 42f / 255f, 28f / 255f, 0.97f);
             backdrop.raycastTarget = true;
+            ConfigureOverlayBackdrop(backdrop);
             overlayRoot.AddComponent<CanvasGroup>().blocksRaycasts = true;
 
             var panel = new GameObject("ShopModalPanel", typeof(RectTransform));
@@ -145,7 +146,7 @@ namespace PickupCent.UI
             go.AddComponent<LayoutElement>().preferredHeight = 18f;
             var text = go.AddComponent<Text>();
             text.font = PickupCentFonts.Default;
-            text.text = "번 돈으로 도구·패시브·자동화를 삽니다";
+            text.text = "번 돈으로 도구와 패시브를 업그레이드합니다.";
             text.color = PickupCentPalette.WithAlpha(Color.white, 0.55f);
             text.fontSize = 12;
             text.alignment = TextAnchor.MiddleCenter;
@@ -166,7 +167,6 @@ namespace PickupCent.UI
 
             CreateTab("도구", ShopTab.Tools, out toolsTabImage);
             CreateTab("패시브", ShopTab.Passives, out passivesTabImage);
-            CreateTab("자동화", ShopTab.Auto, out autoTabImage);
         }
 
         private void CreateTab(string label, ShopTab tab, out Image image)
@@ -221,16 +221,23 @@ namespace PickupCent.UI
         private void WireExistingOverlay()
         {
             shopTabs = FindTransform("ShopModalPanel/ShopTabs");
+            ConfigureOverlayBackdrop(overlayRoot.GetComponent<Image>());
             toolsTabImage = FindImage("ShopModalPanel/ShopTabs/Tab_도구");
             passivesTabImage = FindImage("ShopModalPanel/ShopTabs/Tab_패시브");
-            autoTabImage = FindImage("ShopModalPanel/ShopTabs/Tab_자동화");
+            var autoTab = FindTransform("ShopModalPanel/ShopTabs/Tab_자동화");
+            if (autoTab != null) UICanvasUtility.DestroyObjectSafe(autoTab.gameObject);
             var scrollTransform = FindTransform("ShopModalPanel/ShopList");
             shopScroll = scrollTransform != null ? scrollTransform.GetComponent<ScrollRect>() : null;
             listContent = FindTransform("ShopModalPanel/ShopList/Viewport/Content");
             WireButton("ShopModalPanel/CloseButton", ClosePanel);
             WireButton("ShopModalPanel/ShopTabs/Tab_도구", () => SelectTab(ShopTab.Tools));
             WireButton("ShopModalPanel/ShopTabs/Tab_패시브", () => SelectTab(ShopTab.Passives));
-            WireButton("ShopModalPanel/ShopTabs/Tab_자동화", () => SelectTab(ShopTab.Auto));
+        }
+
+        private static void ConfigureOverlayBackdrop(Image image)
+        {
+            if (image == null) return;
+            image.color = PickupCentPalette.WoodDark;
         }
 
         private Transform FindTransform(string path)
@@ -270,8 +277,7 @@ namespace PickupCent.UI
             UpdateTabVisuals();
 
             if (activeTab == ShopTab.Tools) BuildToolRows();
-            else if (activeTab == ShopTab.Passives) BuildPassiveRows();
-            else BuildAutomationRows();
+            else BuildPassiveRows();
 
             ForceListLayout();
             LogShopListDiagnostics();
@@ -280,10 +286,10 @@ namespace PickupCent.UI
         private void BuildToolRows()
         {
             CreateSectionTitle("TOOLS");
-            CreateToolRow(ToolManager.ToolType.Hand, "손", "무한 내구도. 파기 범위가 좁습니다.");
-            CreateToolRow(ToolManager.ToolType.Shovel, "플라스틱 삽", "표준 도구. 손보다 훨씬 넓게 팝니다.");
-            CreateToolRow(ToolManager.ToolType.Rake, "갈퀴", "가로로 넓은 타원형으로 긁습니다.");
-            CreateToolRow(ToolManager.ToolType.Detector, "금속탐지기", "근처 동전을 별 표시로 찾아냅니다.");
+            CreateToolRow(ToolManager.ToolType.Hand, ToolManager.ToolLabel(ToolManager.ToolType.Hand), "무한 내구도. 파기 범위가 좁습니다.");
+            CreateToolRow(ToolManager.ToolType.Shovel, ToolManager.ToolLabel(ToolManager.ToolType.Shovel), "표준 도구. 손보다 훨씬 넓게 팝니다.");
+            CreateToolRow(ToolManager.ToolType.Rake, ToolManager.ToolLabel(ToolManager.ToolType.Rake), "가로로 넓은 타원형으로 긁습니다.");
+            CreateToolRow(ToolManager.ToolType.Detector, ToolManager.ToolLabel(ToolManager.ToolType.Detector), "근처 동전을 별 표시로 찾아냅니다.");
         }
 
         private void BuildPassiveRows()
@@ -291,19 +297,13 @@ namespace PickupCent.UI
             CreateSectionTitle("UPGRADES");
             CreateUpgradeDefinitionRow(upgradeManager?.DigStrengthDef, "손과 도구의 파기 강도가 증가합니다.");
             CreateUpgradeDefinitionRow(upgradeManager?.DigRangeDef, "손과 도구의 파기 범위가 넓어집니다.");
-            CreateUpgradeDefinitionRow(upgradeManager?.ShovelStabilityDef, "삽으로 습득할 때 아이템이 파괴될 확률이 낮아집니다.");
+            CreateUpgradeDefinitionRow(upgradeManager?.ShovelStabilityDef, "삽으로 습득할 때 아이템이 파손될 확률이 낮아집니다.");
             CreateUpgradeDefinitionRow(upgradeManager?.DetectRangeDef, "금속탐지기의 즉시 발견 반경이 넓어집니다.");
 
             CreateSectionTitle("PASSIVES");
             CreatePassiveRow("수익 증가", "습득 금액이 영구적으로 증가합니다.", 90, () => incomeLevel, () => { scoreTracker?.AddIncomeMultiplier(0.15f); incomeLevel++; });
-            CreatePassiveRow("발견 확률 증가", "구슬·딱지 등 가치 있는 발견물 확률이 증가합니다.", 110, () => rareFindLevel, () => { itemSpawner?.AddRareFindWeightBonus(0.15f); rareFindLevel++; });
+            CreatePassiveRow("발견 확률 증가", "가치 있는 발견물 확률이 증가합니다.", 110, () => rareFindLevel, () => { itemSpawner?.AddRareFindWeightBonus(0.15f); rareFindLevel++; });
             CreatePassiveRow("내구도 개선", "구매한 도구들의 최대 내구도가 증가합니다.", 100, () => durabilityLevel, () => { toolManager?.AddDurabilityCapacityBonus(20f); durabilityLevel++; });
-        }
-
-        private void BuildAutomationRows()
-        {
-            CreateSectionTitle("AUTOMATION");
-            CreateAutoDiggerRow();
             CreateChildrenEventRow();
         }
 
@@ -332,7 +332,11 @@ namespace PickupCent.UI
             var action = CreateSmallButton(right, "장착", 80f, () =>
             {
                 if (toolManager == null) return;
-                if (!toolManager.IsToolOwned(tool)) toolManager.TryPurchaseTool(tool, scoreTracker);
+                if (!toolManager.IsToolOwned(tool))
+                {
+                    if (toolManager.TryPurchaseTool(tool, scoreTracker))
+                        toolManager.TryEquipTool(tool);
+                }
                 else toolManager.TryEquipTool(tool);
                 RefreshRows();
             });
@@ -385,7 +389,7 @@ namespace PickupCent.UI
         private void CreatePassiveRow(string name, string desc, int baseCost, Func<int> getLevel, Action apply)
         {
             var row = CreateListRow($"Passive_{name}");
-            CreateLeft(row.transform, "✨", name, desc, out _, out _);
+            CreateLeft(row.transform, "강", name, desc, out _, out _);
             var right = CreateRight(row.transform);
             var levelText = CreateInlineText(right, "Lv.0/5", 12, PickupCentPalette.GoldBright, 52f);
             var button = CreateSmallButton(right, "업그레이드", 100f, () =>
@@ -410,69 +414,29 @@ namespace PickupCent.UI
             });
         }
 
-        private void CreateAutoDiggerRow()
-        {
-            var row = CreateListRow("AutoDigger");
-            CreateLeft(row.transform, "로", "자동 파기 장치", "구매 후 주기적으로 모래를 뒤져 소액을 벌어옵니다.", out var title, out var desc);
-            var right = CreateRight(row.transform);
-            var badge = CreateBadge(right, "작동중");
-            var bar = CreateMiniBar(right);
-            var repair = CreateSmallButton(right, "수리", 62f, () => { autoDigger?.TryRepair(scoreTracker); RefreshRows(); });
-            var action = CreateSmallButton(right, "구매", 92f, () => { autoDigger?.TryPurchase(scoreTracker); RefreshRows(); });
-
-            refreshers.Add(score =>
-            {
-                bool owned = autoDigger != null && autoDigger.Owned;
-                badge.SetActive(owned && autoDigger.Durability > 0f);
-                bar.SetActive(owned);
-                if (owned) SetMiniBar(bar, autoDigger.Durability / autoDigger.MaxDurability);
-                repair.gameObject.SetActive(owned);
-                repair.interactable = owned && autoDigger.RepairCost > 0 && score >= autoDigger.RepairCost;
-                action.interactable = !owned && autoDigger != null && score >= autoDigger.PurchaseCost;
-                SetButtonText(repair, owned ? $"수리 · {autoDigger.RepairCost}" : "수리");
-                SetButtonText(action, owned ? "구매완료" : $"구매 · {autoDigger?.PurchaseCost ?? 0}");
-                title.color = owned ? PickupCentPalette.GoldBright : PickupCentPalette.Cream;
-                if (owned) desc.text = $"{Mathf.CeilToInt(autoDigger.Durability)}/{Mathf.CeilToInt(autoDigger.MaxDurability)} · {autoDigger.CurrentInterval:0.0}초마다 +{autoDigger.CurrentIncome}원";
-            });
-
-            CreateAutoUpgradeRow("로봇 속도", "자동 장치 작동 간격이 짧아집니다.", 140, () => autoDigger?.SpeedLevel ?? 0, () => autoDigger != null && autoDigger.TryUpgradeSpeed(scoreTracker));
-            CreateAutoUpgradeRow("로봇 수익", "자동 장치가 한 번에 더 많이 벌어옵니다.", 160, () => autoDigger?.IncomeLevel ?? 0, () => autoDigger != null && autoDigger.TryUpgradeIncome(scoreTracker));
-            CreateAutoUpgradeRow("로봇 내구도", "자동 장치의 최대 내구도가 증가합니다.", 150, () => autoDigger?.DurabilityLevel ?? 0, () => autoDigger != null && autoDigger.TryUpgradeDurability(scoreTracker));
-        }
-
-        private void CreateAutoUpgradeRow(string name, string desc, int baseCost, Func<int> getLevel, Func<bool> purchase)
-        {
-            var row = CreateListRow($"AutoUpgrade_{name}");
-            CreateLeft(row.transform, "강", name, desc, out _, out _);
-            var right = CreateRight(row.transform);
-            var levelText = CreateInlineText(right, "Lv.0/5", 12, PickupCentPalette.GoldBright, 52f);
-            var button = CreateSmallButton(right, "강화", 90f, () => { purchase(); RefreshRows(); });
-            refreshers.Add(score =>
-            {
-                int level = getLevel();
-                bool owned = autoDigger != null && autoDigger.Owned;
-                bool maxed = level >= (autoDigger?.MaxUpgradeLevel ?? 5);
-                int cost = autoDigger != null ? autoDigger.GetUpgradeCost(level, baseCost) : Cost(baseCost, level);
-                levelText.text = $"Lv.{level}/{(autoDigger?.MaxUpgradeLevel ?? 5)}";
-                SetButtonText(button, !owned ? "장치 필요" : maxed ? "MAX" : score >= cost ? $"강화 · {cost}" : $"부족 · {cost}");
-                button.interactable = owned && !maxed && score >= cost;
-            });
-        }
-
         private void CreateChildrenEventRow()
         {
-            var row = CreateListRow("ChildrenEvent");
-            CreateLeft(row.transform, "이", "아이들 등장 이벤트", "구매 후 일정 주기로 지나가며 새 발견물을 흩뿌립니다.", out var title, out _);
+            if (swarmEvent == null) return;
+
+            var row = CreateListRow("Passive_ChildrenEvent");
+            CreateLeft(row.transform, "이", "아이들 등장 이벤트", "구매 후 일정 주기로 지나가며 새 발견물을 흩뿌립니다.", out var title, out var desc);
             var right = CreateRight(row.transform);
             var status = CreateInlineText(right, "미구매", 12, PickupCentPalette.GoldBright, 62f);
-            var button = CreateSmallButton(right, "구매", 90f, () => { swarmEvent?.TryPurchase(scoreTracker); RefreshRows(); });
+            var button = CreateSmallButton(right, "구매", 90f, () =>
+            {
+                swarmEvent?.TryPurchase(scoreTracker);
+                RefreshRows();
+            });
+
             refreshers.Add(score =>
             {
-                bool purchased = swarmEvent != null && swarmEvent.IsPurchased;
+                if (swarmEvent == null) return;
+                bool purchased = swarmEvent.IsPurchased;
                 status.text = purchased ? (swarmEvent.IsEventRunning ? "진행중" : $"{swarmEvent.SecondsUntilNextEvent:F0}초") : "미구매";
-                SetButtonText(button, purchased ? "적용중" : $"구매 · {swarmEvent?.PurchaseCost ?? 0}");
-                button.interactable = !purchased && swarmEvent != null && score >= swarmEvent.PurchaseCost;
+                SetButtonText(button, purchased ? "적용중" : score >= swarmEvent.PurchaseCost ? $"구매 · {swarmEvent.PurchaseCost}" : $"부족 · {swarmEvent.PurchaseCost}");
+                button.interactable = !purchased && score >= swarmEvent.PurchaseCost;
                 title.color = purchased ? PickupCentPalette.GoldBright : PickupCentPalette.Cream;
+                desc.text = purchased ? "아이들이 주기적으로 지나가며 새 발견물을 흩뿌립니다." : "구매 후 일정 주기로 지나가며 새 발견물을 흩뿌립니다.";
             });
         }
 
@@ -657,20 +621,46 @@ namespace PickupCent.UI
             var existing = sidePanel.Find("ShopToggleButton");
             if (existing != null)
             {
-                var existingButton = existing.GetComponentInChildren<Button>();
-                if (existingButton != null)
-                {
-                    existingButton.onClick.RemoveListener(TogglePanel);
-                    existingButton.onClick.AddListener(TogglePanel);
-                }
+                ConfigureToggleLayout(existing.gameObject);
+                UICanvasUtility.ClearChildrenSafe(existing);
+                CreateToggleVisual(existing);
                 return;
             }
 
             var go = new GameObject("ShopToggleButton", typeof(RectTransform));
             go.transform.SetParent(sidePanel, false);
-            go.AddComponent<LayoutElement>().preferredHeight = 44f;
-            var button = CreateFlatButton(go.transform, "상점", 14, PickupCentPalette.SecondaryButtonBg, PickupCentPalette.Cream, TogglePanel);
-            button.GetComponent<Image>().color = Color.white;
+            ConfigureToggleLayout(go);
+            CreateToggleVisual(go.transform);
+        }
+
+        private void CreateToggleVisual(Transform parent)
+        {
+            var normalSprite = ProceduralSprites.CreateGradientButtonSliced(48, 12f,
+                PickupCentPalette.Gold, PickupCentPalette.WoodLight, 3f, PickupCentPalette.ButtonBottomBorder);
+            var pressedSprite = ProceduralSprites.CreateGradientButtonSliced(48, 12f,
+                PickupCentPalette.Gold, PickupCentPalette.WoodLight, 1f, PickupCentPalette.ButtonBottomBorder);
+
+            var visual = UICanvasUtility.CreatePressableSurface(parent, normalSprite, pressedSprite, out var button, out _);
+            button.onClick.AddListener(TogglePanel);
+
+            var labelGO = new GameObject("Label", typeof(RectTransform));
+            labelGO.transform.SetParent(visual.transform, false);
+            Stretch((RectTransform)labelGO.transform);
+            var label = labelGO.AddComponent<Text>();
+            label.font = PickupCentFonts.Title;
+            label.text = "상점";
+            label.color = PickupCentPalette.Ink;
+            label.fontStyle = FontStyle.Bold;
+            label.fontSize = 17;
+            label.alignment = TextAnchor.MiddleCenter;
+        }
+
+        private static void ConfigureToggleLayout(GameObject go)
+        {
+            var layout = go.GetComponent<LayoutElement>() ?? go.AddComponent<LayoutElement>();
+            layout.preferredHeight = 40f;
+            layout.flexibleWidth = 1f;
+            if (go.transform is RectTransform rt) rt.sizeDelta = new Vector2(rt.sizeDelta.x, 40f);
         }
 
         private void TogglePanel()
@@ -729,7 +719,7 @@ namespace PickupCent.UI
         private void LogShopListDiagnostics()
         {
             if (listContent == null || overlayRoot == null) return;
-            int sourceCount = activeTab == ShopTab.Tools ? 4 : activeTab == ShopTab.Passives ? CountPassiveSources() : 5;
+            int sourceCount = activeTab == ShopTab.Tools ? 4 : CountPassiveSources();
             var contentRt = (RectTransform)listContent;
             Debug.Log($"[ShopList] tab={activeTab}, source={sourceCount}, contentChildren={listContent.childCount}, contentSize={contentRt.rect.size}, overlayActive={overlayRoot.activeInHierarchy}, sibling={overlayRoot.transform.GetSiblingIndex()}");
             for (int i = 0; i < listContent.childCount; i++)
@@ -748,6 +738,7 @@ namespace PickupCent.UI
             if (upgradeManager?.DigRangeDef != null) count++;
             if (upgradeManager?.ShovelStabilityDef != null) count++;
             if (upgradeManager?.DetectRangeDef != null) count++;
+            if (swarmEvent != null) count++;
             return count;
         }
 #else
@@ -757,7 +748,6 @@ namespace PickupCent.UI
         {
             SetTab(toolsTabImage, activeTab == ShopTab.Tools);
             SetTab(passivesTabImage, activeTab == ShopTab.Passives);
-            SetTab(autoTabImage, activeTab == ShopTab.Auto);
         }
 
         private static void SetTab(Image image, bool active)

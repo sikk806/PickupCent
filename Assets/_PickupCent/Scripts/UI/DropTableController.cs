@@ -41,6 +41,7 @@ namespace PickupCent.UI
 
             BuildUI();
             RefreshList();
+            UICanvasUtility.RefreshSidePanelLayout();
         }
 
         private void BuildUI()
@@ -202,7 +203,9 @@ namespace PickupCent.UI
             iconRt.anchorMin = new Vector2(0.5f, 0.5f);
             iconRt.anchorMax = new Vector2(0.5f, 0.5f);
             iconRt.sizeDelta = new Vector2(14f, 14f);
-            iconGO.AddComponent<Image>().sprite = ProceduralSprites.CreateCircle(28, def.displayColor, 1f);
+            var iconImage = iconGO.AddComponent<Image>();
+            iconImage.sprite = CreateItemIconSprite(def);
+            iconImage.color = Color.white;
 
             var nameGO = new GameObject("Name", typeof(RectTransform));
             nameGO.transform.SetParent(rowGO.transform, false);
@@ -240,6 +243,16 @@ namespace PickupCent.UI
             text.color = new Color(1f, 1f, 1f, 0.5f);
             text.fontSize = 13;
             text.alignment = TextAnchor.MiddleCenter;
+        }
+
+        private static Sprite CreateItemIconSprite(ItemDefinition def)
+        {
+            if (def == null) return null;
+            if (def.artSprite != null) return def.artSprite;
+
+            return def.shape == ItemDefinition.ItemShape.Circle
+                ? ProceduralSprites.CreateCircle(28, def.displayColor, 1f)
+                : ProceduralSprites.CreateSquare(28, def.displayColor, 1f);
         }
     }
 }

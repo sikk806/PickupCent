@@ -8,7 +8,7 @@ namespace PickupCent.Economy
     public class ScoreTracker : MonoBehaviour
     {
         [SerializeField] private int score;
-        [SerializeField] private float incomeMultiplier = 1f;
+        [SerializeField] private float incomeMultiplier = 3f;
 
         public int Score => score;
         public float IncomeMultiplier => incomeMultiplier;

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using PickupCent.Digging;
+using PickupCent.UI;
 using UnityEngine;
 
 namespace PickupCent.Economy
@@ -18,14 +19,14 @@ namespace PickupCent.Economy
         [SerializeField] private ScoreTracker scoreTracker;
         [SerializeField] private ComboManager comboManager;
         [SerializeField] private ItemDefinition[] itemPool;
-        [SerializeField] private int itemCount = 5;
+        [SerializeField] private int itemCount = 20;
         [Tooltip("필드 가장자리로부터 스폰을 피할 여백(월드 단위)")]
         [SerializeField] private float edgeMargin = 0.8f;
 
         [Header("지형지물 스폰 편향")]
         [SerializeField] private TerrainFeature[] terrainFeatures;
         [Tooltip("평상시 스폰에서 지형지물 주변을 고를 확률(나머지는 필드 전체 균등)")]
-        [SerializeField, Range(0f, 1f)] private float terrainBiasChance = 0.6f;
+        [SerializeField, Range(0f, 1f)] private float terrainBiasChance = 0f;
 
         private readonly List<DiggableItem> activeItems = new List<DiggableItem>();
         private float totalWeight;
@@ -100,16 +101,14 @@ namespace PickupCent.Economy
             Debug.Log($"[ItemSpawner] 발견 확률 보너스 +{amount:P0} → 현재 +{rareFindWeightBonus:P0}, 기본 totalWeight={totalWeight:0.##}");
         }
 
-        private Vector2 PickSpawnPosition(Rect? burstBand)
+        private Vector2 PickSpawnPosition(Rect? burstBand, ItemDefinition def)
         {
             if (burstBand.HasValue)
             {
-                bool hasTerrain = terrainFeatures != null && terrainFeatures.Length > 0;
-                bool pickTerrain = hasTerrain && UnityEngine.Random.value < 0.5f;
-                return pickTerrain ? RandomPositionNearTerrainFeature() : RandomPositionInBand(burstBand.Value);
+                return RandomPositionInBand(burstBand.Value, def);
             }
 
-            return RandomBiasedSpawnPosition();
+            return RandomUniformSpawnPosition(def);
         }
 
         private Vector2 RandomBiasedSpawnPosition()
@@ -126,41 +125,76 @@ namespace PickupCent.Economy
             return ClampToField(feature.Position + offset);
         }
 
-        private Vector2 RandomPositionInBand(Rect band)
+        private Vector2 RandomPositionInBand(Rect band, ItemDefinition def)
         {
             float x = UnityEngine.Random.Range(band.xMin, band.xMax);
             float y = UnityEngine.Random.Range(band.yMin, band.yMax);
-            return ClampToField(new Vector2(x, y));
+            return ClampToField(new Vector2(x, y), def);
         }
 
-        private Vector2 RandomUniformSpawnPosition()
+        private Vector2 RandomUniformSpawnPosition(ItemDefinition def = null)
         {
             if (sandMask == null) return Vector2.zero;
 
-            Vector2 field = sandMask.FieldSize;
-            Vector2 half = new Vector2(
-                Mathf.Max(0f, field.x * 0.5f - edgeMargin),
-                Mathf.Max(0f, field.y * 0.5f - edgeMargin));
-            Vector2 center = sandMask.transform.position;
-
-            float x = UnityEngine.Random.Range(-half.x, half.x);
-            float y = UnityEngine.Random.Range(-half.y, half.y);
-            return center + new Vector2(x, y);
+            Rect rect = ShrinkRect(GetSpawnWorldRect(), GetItemSpawnMargin(def));
+            float x = UnityEngine.Random.Range(rect.xMin, rect.xMax);
+            float y = UnityEngine.Random.Range(rect.yMin, rect.yMax);
+            return new Vector2(x, y);
         }
 
-        private Vector2 ClampToField(Vector2 pos)
+        private Vector2 ClampToField(Vector2 pos, ItemDefinition def = null)
         {
             if (sandMask == null) return pos;
 
+            Rect rect = ShrinkRect(GetSpawnWorldRect(), GetItemSpawnMargin(def));
+            float x = Mathf.Clamp(pos.x, rect.xMin, rect.xMax);
+            float y = Mathf.Clamp(pos.y, rect.yMin, rect.yMax);
+            return new Vector2(x, y);
+        }
+
+        private Rect GetSpawnWorldRect()
+        {
             Vector2 field = sandMask.FieldSize;
             Vector2 center = sandMask.transform.position;
             Vector2 half = new Vector2(
                 Mathf.Max(0f, field.x * 0.5f - edgeMargin),
                 Mathf.Max(0f, field.y * 0.5f - edgeMargin));
 
-            float x = Mathf.Clamp(pos.x, center.x - half.x, center.x + half.x);
-            float y = Mathf.Clamp(pos.y, center.y - half.y, center.y + half.y);
-            return new Vector2(x, y);
+            Rect fieldRect = Rect.MinMaxRect(center.x - half.x, center.y - half.y, center.x + half.x, center.y + half.y);
+            if (!UICanvasUtility.TryGetPlayableStageNormalizedRect(out Rect normalizedStageRect))
+                return fieldRect;
+
+            float xMin = Mathf.Lerp(fieldRect.xMin, fieldRect.xMax, normalizedStageRect.xMin);
+            float xMax = Mathf.Lerp(fieldRect.xMin, fieldRect.xMax, normalizedStageRect.xMax);
+            float yMin = Mathf.Lerp(fieldRect.yMin, fieldRect.yMax, normalizedStageRect.yMin);
+            float yMax = Mathf.Lerp(fieldRect.yMin, fieldRect.yMax, normalizedStageRect.yMax);
+
+            if (xMax <= xMin || yMax <= yMin) return fieldRect;
+            return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+        }
+
+        private static Rect ShrinkRect(Rect rect, float margin)
+        {
+            if (margin <= 0f) return rect;
+
+            float xMin = rect.xMin + margin;
+            float xMax = rect.xMax - margin;
+            float yMin = rect.yMin + margin;
+            float yMax = rect.yMax - margin;
+            if (xMax <= xMin || yMax <= yMin) return rect;
+            return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+        }
+
+        private static float GetItemSpawnMargin(ItemDefinition def)
+        {
+            if (def == null) return 0f;
+            if (def.artSprite != null)
+            {
+                Bounds bounds = def.artSprite.bounds;
+                return Mathf.Max(bounds.extents.x, bounds.extents.y);
+            }
+
+            return Mathf.Max(0f, def.displaySize * 0.5f);
         }
 
         private void SpawnOne(Rect? burstBand)
@@ -174,7 +208,7 @@ namespace PickupCent.Economy
 
             var go = new GameObject("Item");
             var item = go.AddComponent<DiggableItem>();
-            item.Initialize(def, PickSpawnPosition(burstBand));
+            item.Initialize(def, PickSpawnPosition(burstBand, def));
             item.OnAcquired += HandleAcquired;
             item.OnDestroyedByRisk += HandleDestroyedByRisk;
             activeItems.Add(item);
@@ -230,7 +264,7 @@ namespace PickupCent.Economy
         {
             var def = PickWeighted();
             if (def == null) return;
-            item.Initialize(def, PickSpawnPosition(null));
+            item.Initialize(def, PickSpawnPosition(null, def));
         }
     }
 }

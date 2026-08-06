@@ -37,26 +37,9 @@ namespace PickupCent.UI
 
         private void BuildToolBar()
         {
-            if (entries == null) return;
-
             var sidePanel = UICanvasUtility.EnsureSidePanel();
-            var existingContent = sidePanel.Find("Block_도구/Content");
-            if (existingContent != null && WireExistingButtons(existingContent)) return;
-
-            var content = UICanvasUtility.CreateBlockCard(sidePanel, "도구");
-
-            foreach (var entry in entries)
-            {
-                if (entry == null) continue;
-                if (entry.button != null) UICanvasUtility.DestroyObjectSafe(entry.button.gameObject);
-
-                CreateToolButton(content, entry, out var button, out var background);
-                entry.button = button;
-                entry.background = background;
-
-                var tool = entry.tool;
-                button.onClick.AddListener(() => toolManager.SwitchTool(tool));
-            }
+            var existingToolBlock = sidePanel.Find("Block_도구");
+            if (existingToolBlock != null) UICanvasUtility.DestroyObjectSafe(existingToolBlock.gameObject);
         }
 
         private bool WireExistingButtons(Transform content)

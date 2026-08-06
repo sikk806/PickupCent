@@ -44,22 +44,23 @@ namespace PickupCent.UI
             var canvasGO = UICanvasUtility.EnsureCanvas();
 
             const int width = 200;
-            const int bodyHeight = 44;
-            const int tailHeight = 10;
-            const float cornerRadius = 12f;
+            const int height = 54;
 
-            pillGO = new GameObject("PickupFeedback", typeof(RectTransform));
+            var existing = canvasGO.transform.Find("PickupFeedback");
+            pillGO = existing != null
+                ? existing.gameObject
+                : new GameObject("PickupFeedback", typeof(RectTransform));
             pillGO.transform.SetParent(canvasGO.transform, false);
+            UICanvasUtility.ClearChildrenSafe(pillGO.transform);
             var rt = pillGO.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0.5f, 1f);
-            rt.anchorMax = new Vector2(0.5f, 1f);
-            rt.pivot = new Vector2(0.5f, 0f);
-            rt.anchoredPosition = new Vector2(0f, -100f);
-            rt.sizeDelta = new Vector2(width, bodyHeight + tailHeight);
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = new Vector2(-152f, 250f);
+            rt.sizeDelta = new Vector2(width, height);
 
-            var borderImage = pillGO.AddComponent<Image>();
-            borderImage.sprite = ProceduralSprites.CreateSpeechBubble(width, bodyHeight, tailHeight, cornerRadius,
-                PickupCentPalette.PopupBorder);
+            var borderImage = pillGO.GetComponent<Image>() ?? pillGO.AddComponent<Image>();
+            borderImage.sprite = ProceduralSprites.CreatePill(width, height, PickupCentPalette.PopupBorder);
 
             var bgGO = new GameObject("Background", typeof(RectTransform));
             bgGO.transform.SetParent(pillGO.transform, false);
@@ -69,15 +70,14 @@ namespace PickupCent.UI
             bgRt.offsetMin = new Vector2(2f, 2f);
             bgRt.offsetMax = new Vector2(-2f, -2f);
             var bgImage = bgGO.AddComponent<Image>();
-            bgImage.sprite = ProceduralSprites.CreateSpeechBubble(width - 4, bodyHeight - 4, Mathf.Max(1, tailHeight - 2),
-                Mathf.Max(1f, cornerRadius - 2f), PickupCentPalette.PopupBg);
+            bgImage.sprite = ProceduralSprites.CreatePill(width - 4, height - 4, PickupCentPalette.PopupBg);
 
             var textGO = new GameObject("Text", typeof(RectTransform));
             textGO.transform.SetParent(bgGO.transform, false);
             var textRt = textGO.GetComponent<RectTransform>();
             textRt.anchorMin = Vector2.zero;
             textRt.anchorMax = Vector2.one;
-            textRt.offsetMin = new Vector2(10f, tailHeight);
+            textRt.offsetMin = new Vector2(10f, 0f);
             textRt.offsetMax = new Vector2(-10f, -6f);
             feedbackText = textGO.AddComponent<Text>();
             feedbackText.font = PickupCentFonts.Title;

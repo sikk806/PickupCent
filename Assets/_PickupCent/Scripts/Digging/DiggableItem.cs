@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using PickupCent.Common;
 using PickupCent.Economy;
 using UnityEngine;
@@ -10,7 +10,7 @@ namespace PickupCent.Digging
     /// 75% 이상이 알파 10 이하(=뚫림)가 되면 습득 처리한다. 손/삽/금속탐지기 전부 이 파기 경로를
     /// 공유하므로 도구 종류나 아이템 종류(코인/구슬/딱지)와 무관하게 파면 습득할 수 있다.
     /// itemDefinition이 있으면(ItemSpawner가 생성) 그 값으로 점수/탐지가능여부를 판단하고,
-    /// 없으면(Test1/Test2의 고정 더미) 예전처럼 값 없이 습득 로그만 남긴다 — 하위 호환용.
+    /// 없으면(Test1/Test2의 고정 더미) 예전처럼 값 없이 습득 로그만 남긴다 ? 하위 호환용.
     /// </summary>
     [RequireComponent(typeof(SpriteRenderer))]
     public class DiggableItem : MonoBehaviour
@@ -48,9 +48,9 @@ namespace PickupCent.Digging
 
         /// <summary>정상 습득(파괴되지 않음) 시 발생. 스포너가 점수 지급/재배치에 사용.</summary>
         public event Action<DiggableItem> OnAcquired;
-        /// <summary>삽 파괴 리스크로 소실됐을 때 발생.</summary>
+        /// <summary>삽 리스크로 아이템이 파괴될 때 발생. 스포너가 보상 없이 재배치하는 데 사용.</summary>
         public event Action<DiggableItem> OnDestroyedByRisk;
-        /// <summary>금속탐지기에 발견 표시(spotted)되는 순간 1회 발생 — 사운드 등 알림용, 습득과는 무관.</summary>
+        /// <summary>금속탐지기에 발견 표시(spotted)되는 순간 1회 발생 ? 사운드 등 알림용, 습득과는 무관.</summary>
         public event Action<DiggableItem> OnSpotted;
 
         public ItemDefinition Definition => itemDefinition;
@@ -137,10 +137,11 @@ namespace PickupCent.Digging
             var markerGO = new GameObject("SpottedMarker");
             markerGO.transform.SetParent(transform, false);
             // 사각의 모래 레이어(z=0)보다 카메라에 더 가깝게 둬서, 덜 파낸 상태에서도 표시가 가려지지 않게 한다.
-            markerGO.transform.localPosition = new Vector3(0f, 0.5f, -1f);
+            markerGO.transform.localPosition = new Vector3(0f, 0f, -1f);
 
             spottedMarker = markerGO.AddComponent<SpriteRenderer>();
             spottedMarker.sprite = ProceduralSprites.CreateCircle(32, spottedMarkerColor, spottedMarkerSize);
+            spottedMarker.color = new Color(1f, 1f, 1f, 0.8f);
             spottedMarker.sortingOrder = 10;
             markerGO.SetActive(false);
         }
@@ -153,7 +154,7 @@ namespace PickupCent.Digging
             {
                 sr.sprite = itemDefinition.artSprite;
                 sr.color = Color.white;
-                // artSprite는 스케일 보정 없이 원본 그대로(scale=1) 렌더링한다 — 실제 크기는
+                // artSprite는 스케일 보정 없이 원본 그대로(scale=1) 렌더링한다 ? 실제 크기는
                 // 아트 임포트 설정의 Pixels Per Unit이 그대로 결정한다. displaySize는 관여하지 않는다.
                 transform.localScale = Vector3.one;
                 return;
@@ -164,7 +165,7 @@ namespace PickupCent.Digging
                 : ProceduralSprites.CreateSquare(64, itemDefinition.displayColor, itemDefinition.displaySize);
             sr.color = Color.white;
             // procedural 스프라이트는 항상 자기 pixelsPerUnit에 displaySize를 이미 반영해서 만들어지므로
-            // scale=1이어야 한다 — 이전에 artSprite 아이템이었다가 재배치된 경우를 대비해 명시적으로 리셋.
+            // scale=1이어야 한다 ? 이전에 artSprite 아이템이었다가 재배치된 경우를 대비해 명시적으로 리셋.
             transform.localScale = Vector3.one;
         }
 
@@ -190,10 +191,15 @@ namespace PickupCent.Digging
             for (int i = 0; i < checkpointOffsets.Length; i++)
             {
                 Vector2 worldPt = (Vector2)transform.position + checkpointOffsets[i];
-                if (sandMask.SampleAlpha255(worldPt) <= threshold255) exposed++;
+                float alpha = sandMask.SampleAlpha255(worldPt);
+                if (alpha <= threshold255) exposed++;
             }
 
             float ratio = (float)exposed / checkpointOffsets.Length;
+            if (!found && exposed > 0)
+            {
+                ShowSpottedMarker();
+            }
 
             if (verboseLogging && exposed != lastExposedCount)
             {
@@ -219,12 +225,14 @@ namespace PickupCent.Digging
 
         private void TryAcquire(int exposed, float ratio)
         {
-            bool isShovel = toolManager != null && toolManager.CurrentTool == ToolManager.ToolType.Shovel;
-            if (isShovel && UnityEngine.Random.value < toolManager.ShovelDestroyChance)
+            bool shovelRisk = toolManager != null
+                && toolManager.CurrentTool == ToolManager.ToolType.Shovel
+                && UnityEngine.Random.value < toolManager.ShovelDestroyChance;
+            if (shovelRisk)
             {
                 destroyed = true;
                 HideSpottedMarker();
-                Debug.Log($"[DiggableItem:{DisplayName}] 파괴됨 (삽 파괴 확률 발동, {exposed}/9 노출)");
+                Debug.Log($"[DiggableItem:{DisplayName}] 삽 리스크로 아이템이 파손됨 ({exposed}/9 노출, {ratio:P0})");
                 OnDestroyedByRisk?.Invoke(this);
                 return;
             }
@@ -237,7 +245,7 @@ namespace PickupCent.Digging
         }
 
         /// <summary>
-        /// 금속탐지기 장착 중 매 프레임 호출(클릭 여부 무관). 습득이 아니라 "발견 표시"만 한다 —
+        /// 금속탐지기 장착 중 매 프레임 호출(클릭 여부 무관). 습득이 아니라 "발견 표시"만 한다 ?
         /// itemDefinition.detectableByMetalDetector가 true인 아이템에 한해, 마우스가 반경 안에
         /// dwellTime 이상 연속으로 머물러야 표시가 뜬다. 반경을 벗어나면 머문 시간은 리셋된다.
         /// </summary>
@@ -272,6 +280,15 @@ namespace PickupCent.Digging
             spotted = false;
             detectorHoverTimer = 0f;
             if (spottedMarker != null) spottedMarker.gameObject.SetActive(false);
+        }
+
+        private void ShowSpottedMarker()
+        {
+            if (spotted) return;
+            spotted = true;
+            detectorHoverTimer = 0f;
+            if (spottedMarker != null) spottedMarker.gameObject.SetActive(true);
+            OnSpotted?.Invoke(this);
         }
 
         private void OnDrawGizmosSelected()

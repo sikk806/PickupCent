@@ -32,7 +32,7 @@ namespace PickupCent.Digging
 
         [Header("되메워짐 (안 건드리면 서서히 회복)")]
         [Tooltip("초당 회복량 (0~255 기준)")]
-        [SerializeField] private float regenPerSecond = 50f;
+        [SerializeField] private float regenPerSecond = 30f;
 
         [Header("표시 (2단계 표현: 살짝 건드림=색만 어두워짐 / 확실히 뚫림=투명해짐)")]
         [SerializeField] private Color sandColor = new Color(0.76f, 0.65f, 0.42f);
@@ -359,10 +359,10 @@ namespace PickupCent.Digging
             return Mathf.Clamp01(hardness > 0f ? strength / hardness : 1f);
         }
 
-        /// <summary>월드 좌표 worldCenter에 "한 번 쓸기"(스트로크)를 적용한다.</summary>
-        public void Erode(Vector2 worldCenter)
+        /// <summary>월드 좌표 worldCenter에 "한 번 쓸기"(스트로크)를 적용하고, 파낸 양을 반환한다.</summary>
+        public float Erode(Vector2 worldCenter)
         {
-            if (!IsWorldInsideField(worldCenter)) return;
+            if (!IsWorldInsideField(worldCenter)) return 0f;
 
             Vector2 uv = WorldToUV(worldCenter);
             float ratio = ErosionRatio();
@@ -378,6 +378,7 @@ namespace PickupCent.Digging
             other = tmp;
 
             UpdateDisplayMaterial();
+            return ratio * brushRadius * brushRadius;
         }
 
         private Vector2 WorldToUV(Vector2 worldPos)

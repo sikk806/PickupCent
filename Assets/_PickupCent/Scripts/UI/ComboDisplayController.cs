@@ -84,6 +84,7 @@ namespace PickupCent.UI
             CreateComboRow(content);
             CreateComboBar(content);
             CreateHistoryRow(content);
+            UICanvasUtility.RefreshSidePanelLayout(sidePanel);
         }
 
         private void CreateComboRow(Transform content)
@@ -194,9 +195,21 @@ namespace PickupCent.UI
                     iconRt.anchorMin = new Vector2(0.5f, 0.5f);
                     iconRt.anchorMax = new Vector2(0.5f, 0.5f);
                     iconRt.sizeDelta = new Vector2(16f, 16f);
-                    iconGO.AddComponent<Image>().sprite = ProceduralSprites.CreateCircle(32, def.displayColor, 1f);
+                    var iconImage = iconGO.AddComponent<Image>();
+                    iconImage.sprite = CreateItemIconSprite(def);
+                    iconImage.color = Color.white;
                 }
             }
+        }
+
+        private static Sprite CreateItemIconSprite(ItemDefinition def)
+        {
+            if (def == null) return null;
+            if (def.artSprite != null) return def.artSprite;
+
+            return def.shape == ItemDefinition.ItemShape.Circle
+                ? ProceduralSprites.CreateCircle(32, def.displayColor, 1f)
+                : ProceduralSprites.CreateSquare(32, def.displayColor, 1f);
         }
 
         /// <summary>화면 가장자리를 두르는 테두리 — 평소엔 비활성, 고콤보 동안만 켜지고 서서히 깜빡인다.

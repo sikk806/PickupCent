@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using PickupCent.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -17,15 +17,7 @@ namespace PickupCent.EditorTools
         [InitializeOnLoadMethod]
         private static void QueueAutoBuild()
         {
-            if (autoBuildQueued) return;
-            autoBuildQueued = true;
-            EditorApplication.delayCall += () =>
-            {
-                autoBuildQueued = false;
-                if (EditorApplication.isPlayingOrWillChangePlaymode) return;
-                if (EditorSceneManager.GetActiveScene().path.Contains("_PickupCent/Scenes/Stage1 Main.unity"))
-                    BuildEditableSceneUi(false);
-            };
+            autoBuildQueued = false;
         }
 
         [MenuItem("PickupCent/UI/Build Editable Scene UI")]
@@ -43,12 +35,12 @@ namespace PickupCent.EditorTools
             UICanvasUtility.EnsureSidePanel();
             UICanvasUtility.EnsureTopHudRow();
 
-            InvokeAwake(FindOrCreateController<HudController>("HudController"));
             InvokeAwake(FindOrCreateController<ToolBarController>("ToolBarController"));
             InvokeAwake(FindOrCreateController<ShopPanelController>("ShopPanelController"));
             InvokeAwake(FindOrCreateController<PausePanelController>("PausePanelController"));
             InvokeAwake(FindOrCreateController<MainTitleScreenController>("MainTitleScreenController"));
             InvokeAwake(FindOrCreateController<PickupFeedbackController>("PickupFeedbackController"));
+            InvokeAwake(FindOrCreateController<MinimapController>("MinimapController"));
 
             var stage = canvasGO.transform.Find("StageRoot");
             var side = canvasGO.transform.Find("SidePanel");

@@ -20,7 +20,7 @@ namespace PickupCent.Digging
         [Tooltip("금속탐지기의 파기 강도. 탐지는 별도 기능이다.")]
         [SerializeField] private float detectorStrength = 0.8f;
 
-        [Header("삽 파괴 리스크 (기획서 3-1: 빠르지만 가끔 터짐)")]
+        [Header("삽 아이템 파손 리스크 (기획서 3-1: 빠르지만 가끔 터짐)")]
         [SerializeField, Range(0f, 1f)] private float shovelDestroyChance = 0.05f;
 
         [Header("금속탐지기 - 탐지(발견 표시) 전용")]
@@ -34,6 +34,7 @@ namespace PickupCent.Digging
         [SerializeField] private int shovelRepairCost = 35;
         [SerializeField] private int rakeRepairCost = 40;
         [SerializeField] private int detectorRepairCost = 45;
+        [SerializeField] private float durabilityLossPerDigAmount = 0.01f;
         [SerializeField, Range(0f, 200f)] private float shovelDurability = 93f;
         [SerializeField, Range(0f, 200f)] private float rakeDurability = 100f;
         [SerializeField, Range(0f, 200f)] private float detectorDurability = 100f;
@@ -60,7 +61,7 @@ namespace PickupCent.Digging
         public ToolType CurrentTool => currentTool;
         public float StrengthBonus => strengthBonus;
         public float BrushRadiusBonus => brushRadiusBonus;
-        public bool IsDiggingTool => true;
+        public bool IsDiggingTool => currentTool == ToolType.Hand || GetToolDurability(currentTool) > 0f;
 
         public float HandStrength
         {
@@ -245,8 +246,29 @@ namespace PickupCent.Digging
         public bool TryEquipTool(ToolType tool)
         {
             if (!IsToolOwned(tool)) return false;
+            if (tool != ToolType.Hand && GetToolDurability(tool) <= 0f)
+            {
+                Debug.Log($"[Tool] 장착 실패: {ToolLabel(tool)} 내구도가 없습니다. 수리 후 장착하세요.");
+                return false;
+            }
             SwitchTool(tool);
             return true;
+        }
+
+        public void ConsumeDurabilityByDigAmount(float digAmount)
+        {
+            if (currentTool == ToolType.Hand || digAmount <= 0f) return;
+
+            float nextDurability = GetToolDurability(currentTool) - digAmount * durabilityLossPerDigAmount;
+            SetDurability(currentTool, Mathf.Clamp(nextDurability, 0f, GetToolMaxDurability(currentTool)));
+
+            if (GetToolDurability(currentTool) > 0f) return;
+
+            Debug.Log($"[Tool] {ToolLabel(currentTool)} 내구도 소진 — 손으로 전환합니다.");
+            currentTool = ToolType.Hand;
+            ApplyToolStats();
+            LogToolChanged();
+            OnToolSwitched?.Invoke(currentTool);
         }
 
         public void AddStrengthBonus(float amount)
@@ -259,7 +281,7 @@ namespace PickupCent.Digging
         public void ReduceShovelDestroyChance(float amount)
         {
             shovelDestroyChance = Mathf.Max(0f, shovelDestroyChance - amount);
-            Debug.Log($"[Tool] 삽 파괴 확률 -{amount:P1} → 현재 {shovelDestroyChance:P1}");
+            Debug.Log($"[Tool] 삽 아이템 파손 확률 -{amount:P1} → 현재 {shovelDestroyChance:P1}");
         }
 
         public void AddDetectorRadius(float amount)

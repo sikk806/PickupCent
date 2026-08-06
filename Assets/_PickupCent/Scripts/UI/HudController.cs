@@ -87,17 +87,32 @@ namespace PickupCent.UI
         {
             var row = UICanvasUtility.EnsureTopHudRow();
 
-            CreatePill(row, regionName, "0원", PickupCentPalette.GoldBright, out scoreValueText);
-            CreatePill(row, "⏱", "00:00", PickupCentPalette.Cream, out timerValueText);
-            CreatePill(row, "도구", "손 ∞", PickupCentPalette.GoldBright, out toolValueText);
+            CreatePill(row, "Region", regionName, "0원", PickupCentPalette.GoldBright, out scoreValueText);
+            CreatePill(row, "Timer", "⏱", "00:00", PickupCentPalette.Cream, out timerValueText);
+            CreatePill(row, "Tool", "도구", "손 ∞", PickupCentPalette.GoldBright, out toolValueText);
+            BindExistingToolValue(row);
         }
 
-        private void CreatePill(Transform parent, string label, string initialValue, Color valueColor, out Text valueText)
+        private void CreatePill(Transform parent, string objectName, string label, string initialValue, Color valueColor, out Text valueText)
         {
             const int pillHeight = 40;
             const int pillWidth = 174;
 
-            var pillGO = new GameObject($"Pill_{name}", typeof(RectTransform));
+            var existing = parent.Find($"Pill_{objectName}");
+            if (existing != null)
+            {
+                valueText = existing.Find("Background/Content/Value")?.GetComponent<Text>();
+                if (valueText != null)
+                {
+                    valueText.text = initialValue;
+                    valueText.color = valueColor;
+                    var existingLayout = valueText.GetComponent<LayoutElement>() ?? valueText.gameObject.AddComponent<LayoutElement>();
+                    existingLayout.preferredWidth = objectName == "Tool" ? 118f : 54f;
+                    return;
+                }
+            }
+
+            var pillGO = new GameObject($"Pill_{objectName}", typeof(RectTransform));
             pillGO.transform.SetParent(parent, false);
             var pillRt = pillGO.GetComponent<RectTransform>();
             pillRt.sizeDelta = new Vector2(pillWidth, pillHeight);
@@ -151,7 +166,19 @@ namespace PickupCent.UI
             valueText.fontStyle = FontStyle.Bold;
             valueText.alignment = TextAnchor.MiddleRight;
             valueText.color = valueColor;
-            valueGO.AddComponent<LayoutElement>().preferredWidth = 54;
+            valueGO.AddComponent<LayoutElement>().preferredWidth = objectName == "Tool" ? 118f : 54f;
+        }
+
+        private void BindExistingToolValue(Transform row)
+        {
+            var pill = row != null ? row.Find("Pill_Tool") : null;
+            var value = pill != null ? pill.Find("Background/Content/Value") : null;
+            var text = value != null ? value.GetComponent<Text>() : null;
+            if (text == null) return;
+
+            toolValueText = text;
+            var layout = value.GetComponent<LayoutElement>() ?? value.gameObject.AddComponent<LayoutElement>();
+            layout.preferredWidth = 118f;
         }
 
         private void Update()

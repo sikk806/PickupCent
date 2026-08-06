@@ -87,7 +87,10 @@ namespace PickupCent.Digging
             Vector3 world = targetCamera.ScreenToWorldPoint(screen);
             if (!mask.IsWorldInsideField(world)) return;
 
-            mask.Erode(world);
+            float digAmount = mask.Erode(world);
+            if (digAmount <= 0f) return;
+
+            toolManager?.ConsumeDurabilityByDigAmount(digAmount);
             OnStroke?.Invoke();
         }
     }

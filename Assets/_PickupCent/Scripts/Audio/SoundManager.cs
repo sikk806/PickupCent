@@ -118,8 +118,8 @@ namespace PickupCent.Audio
         private void HookItem(DiggableItem item)
         {
             if (item == null || !hookedItems.Add(item)) return;
-            item.OnDestroyedByRisk += _ => Play("shovel_break");
             item.OnSpotted += _ => Play("detect_found");
+            item.OnDestroyedByRisk += _ => Play("shovel_break");
         }
 
         private void HandleItemPickedUp(ItemDefinition def)

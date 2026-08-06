@@ -30,6 +30,8 @@ namespace PickupCent.UI
 
         private void Awake()
         {
+            if (!Application.isPlaying) return;
+
             if (scoreTracker == null) scoreTracker = FindFirstObjectByType<ScoreTracker>();
             if (comboTracker == null) comboTracker = FindFirstObjectByType<ComboTracker>();
             BuildUI();
@@ -49,7 +51,9 @@ namespace PickupCent.UI
 
         private void BuildUI()
         {
-            CreateSideButton(UICanvasUtility.EnsureSidePanel());
+            var sidePanel = UICanvasUtility.EnsureSidePanel();
+            CreateSideButton(sidePanel);
+            UICanvasUtility.RefreshSidePanelLayout(sidePanel);
             CreateOverlay();
         }
 
@@ -58,6 +62,7 @@ namespace PickupCent.UI
             var existing = sidePanel.Find("PauseToggleButton");
             if (existing != null)
             {
+                ConfigureSideButtonLayout(existing.gameObject);
                 var existingButton = existing.GetComponentInChildren<Button>();
                 if (existingButton != null)
                 {
@@ -74,7 +79,7 @@ namespace PickupCent.UI
 
             var go = new GameObject("PauseToggleButton", typeof(RectTransform));
             go.transform.SetParent(sidePanel, false);
-            go.AddComponent<LayoutElement>().preferredHeight = 50f;
+            ConfigureSideButtonLayout(go);
 
             var visual = UICanvasUtility.CreatePressableSurface(go.transform, normalSprite, pressedSprite, out var button, out _);
             button.onClick.AddListener(TogglePause);
@@ -89,6 +94,14 @@ namespace PickupCent.UI
             label.fontStyle = FontStyle.Bold;
             label.fontSize = 17;
             label.alignment = TextAnchor.MiddleCenter;
+        }
+
+        private static void ConfigureSideButtonLayout(GameObject go)
+        {
+            var layout = go.GetComponent<LayoutElement>() ?? go.AddComponent<LayoutElement>();
+            layout.preferredHeight = 40f;
+            layout.flexibleWidth = 1f;
+            if (go.transform is RectTransform rt) rt.sizeDelta = new Vector2(rt.sizeDelta.x, 40f);
         }
 
         private void CreateOverlay()
