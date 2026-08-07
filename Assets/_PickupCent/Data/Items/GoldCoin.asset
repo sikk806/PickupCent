@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: GoldCoin
   m_EditorClassIdentifier: Assembly-CSharp::PickupCent.Economy.ItemDefinition
   itemName: "\uACE8\uB4DC \uCF54\uC778"
-  value: 15
-  spawnWeight: 10
+  value: 10
+  spawnWeight: 20
   detectableByMetalDetector: 1
   shape: 0
   displayColor: {r: 0.95, g: 0.8, b: 0.2, a: 1}

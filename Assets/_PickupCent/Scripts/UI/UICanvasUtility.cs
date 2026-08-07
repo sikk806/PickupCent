@@ -156,19 +156,27 @@ namespace PickupCent.UI
         {
             rect = default;
 
-            var canvasGO = GameObject.Find("UICanvas");
-            if (canvasGO == null) return false;
-
-            var stage = canvasGO.transform.Find("StageRoot") as RectTransform;
-            if (stage == null) return false;
+            var stage = EnsureStageRoot() as RectTransform;
+            if (stage == null)
+            {
+                var canvasGO = GameObject.Find("UICanvas");
+                if (canvasGO == null) return false;
+                stage = canvasGO.transform.Find("StageRoot") as RectTransform;
+                if (stage == null) return false;
+            }
 
             Rect stageRect = stage.rect;
             if (stageRect.width <= 0f || stageRect.height <= 0f) return false;
 
-            float left = GetHorizontalBorderRatio(stage, "Left");
-            float right = 1f - GetHorizontalBorderRatio(stage, "Right");
-            float bottom = GetVerticalBorderRatio(stage, "Bottom");
-            float top = 1f - GetVerticalBorderRatio(stage, "Top");
+            float left = 0f;
+            float right = 1f;
+            float bottom = 0f;
+            float top = 1f;
+
+            ApplyLocalBorderInset(stage, stageRect, "Left", ref left, ref bottom, ref right, ref top);
+            ApplyLocalBorderInset(stage, stageRect, "Right", ref left, ref bottom, ref right, ref top);
+            ApplyLocalBorderInset(stage, stageRect, "Bottom", ref left, ref bottom, ref right, ref top);
+            ApplyLocalBorderInset(stage, stageRect, "Top", ref left, ref bottom, ref right, ref top);
 
             rect = Rect.MinMaxRect(
                 Mathf.Clamp01(left),
@@ -178,20 +186,100 @@ namespace PickupCent.UI
             return rect.width > 0f && rect.height > 0f;
         }
 
-        private static readonly Vector3[] StageCorners = new Vector3[4];
-
-        private static float GetHorizontalBorderRatio(RectTransform stage, string name)
+        public static bool TryGetPlayableStageWorldInsets(Camera camera, out Vector4 insets)
         {
-            var border = stage.Find($"StageBorder_{name}") as RectTransform;
-            if (border == null || stage.rect.width <= 0f) return 0f;
-            return Mathf.Clamp01(border.rect.width / stage.rect.width);
+            insets = Vector4.zero;
+            if (camera == null || !camera.orthographic) return false;
+
+            var stage = EnsureStageRoot() as RectTransform;
+            if (stage == null)
+            {
+                var canvasGO = GameObject.Find("UICanvas");
+                if (canvasGO == null) return false;
+                stage = canvasGO.transform.Find("StageRoot") as RectTransform;
+                if (stage == null) return false;
+            }
+
+            Rect stageRect = stage.rect;
+            if (stageRect.width <= 0f || stageRect.height <= 0f) return false;
+
+            float visibleWorldHeight = camera.orthographicSize * 2f;
+            float visibleWorldWidth = visibleWorldHeight * camera.aspect;
+
+            float left = GetBorderWorldWidth(stage, stageRect, "Left", visibleWorldWidth);
+            float right = GetBorderWorldWidth(stage, stageRect, "Right", visibleWorldWidth);
+            float bottom = GetBorderWorldHeight(stage, stageRect, "Bottom", visibleWorldHeight);
+            float top = GetBorderWorldHeight(stage, stageRect, "Top", visibleWorldHeight);
+
+            insets = new Vector4(left, bottom, right, top);
+            return insets.x >= 0f && insets.y >= 0f && insets.z >= 0f && insets.w >= 0f;
         }
 
-        private static float GetVerticalBorderRatio(RectTransform stage, string name)
+        private static readonly Vector3[] StageCorners = new Vector3[4];
+
+        private static float GetBorderWorldWidth(
+            RectTransform stage,
+            Rect stageRect,
+            string name,
+            float visibleWorldWidth)
         {
             var border = stage.Find($"StageBorder_{name}") as RectTransform;
-            if (border == null || stage.rect.height <= 0f) return 0f;
-            return Mathf.Clamp01(border.rect.height / stage.rect.height);
+            if (border == null) return 0f;
+            return Mathf.Clamp01(border.rect.width / stageRect.width) * visibleWorldWidth;
+        }
+
+        private static float GetBorderWorldHeight(
+            RectTransform stage,
+            Rect stageRect,
+            string name,
+            float visibleWorldHeight)
+        {
+            var border = stage.Find($"StageBorder_{name}") as RectTransform;
+            if (border == null) return 0f;
+            return Mathf.Clamp01(border.rect.height / stageRect.height) * visibleWorldHeight;
+        }
+
+        private static void ApplyLocalBorderInset(
+            RectTransform stage,
+            Rect stageRect,
+            string name,
+            ref float left,
+            ref float bottom,
+            ref float right,
+            ref float top)
+        {
+            var border = stage.Find($"StageBorder_{name}") as RectTransform;
+            if (border == null) return;
+
+            border.GetWorldCorners(StageCorners);
+            float bLeft = float.PositiveInfinity;
+            float bBottom = float.PositiveInfinity;
+            float bRight = float.NegativeInfinity;
+            float bTop = float.NegativeInfinity;
+
+            for (int i = 0; i < StageCorners.Length; i++)
+            {
+                Vector3 local = stage.InverseTransformPoint(StageCorners[i]);
+                bLeft = Mathf.Min(bLeft, local.x);
+                bBottom = Mathf.Min(bBottom, local.y);
+                bRight = Mathf.Max(bRight, local.x);
+                bTop = Mathf.Max(bTop, local.y);
+            }
+
+            float overlapLeft = Mathf.Max(stageRect.xMin, bLeft);
+            float overlapBottom = Mathf.Max(stageRect.yMin, bBottom);
+            float overlapRight = Mathf.Min(stageRect.xMax, bRight);
+            float overlapTop = Mathf.Min(stageRect.yMax, bTop);
+            if (overlapRight <= overlapLeft || overlapTop <= overlapBottom) return;
+
+            if (name == "Left")
+                left = Mathf.Max(left, (overlapRight - stageRect.xMin) / stageRect.width);
+            else if (name == "Right")
+                right = Mathf.Min(right, (overlapLeft - stageRect.xMin) / stageRect.width);
+            else if (name == "Bottom")
+                bottom = Mathf.Max(bottom, (overlapTop - stageRect.yMin) / stageRect.height);
+            else if (name == "Top")
+                top = Mathf.Min(top, (overlapBottom - stageRect.yMin) / stageRect.height);
         }
 
         private static void TrimByBorder(RectTransform stage, string name, ref float left, ref float bottom, ref float right, ref float top)

@@ -6437,8 +6437,10 @@ MonoBehaviour:
   - {fileID: 11400000, guid: fa5e68f1f4eaf4046856f1cc40e3033c, type: 2}
   - {fileID: 11400000, guid: dfa64ab3e3121ee40bcec92d604aa019, type: 2}
   - {fileID: 11400000, guid: d58550b5ade74d34a8d34b634ccdcab9, type: 2}
+  sparkleSprite1: {fileID: 21300000, guid: d01cce2ae6778c24f985b982f2b86385, type: 3}
+  sparkleSprite2: {fileID: 21300000, guid: 65e5853009be2584baceecb359314f2a, type: 3}
   itemCount: 20
-  edgeMargin: 0.8
+  edgeMargin: 0
   terrainFeatures:
   - {fileID: 371944717}
   - {fileID: 1655908218}
@@ -16473,11 +16475,11 @@ MonoBehaviour:
   - tool: 0
     button: {fileID: 0}
     background: {fileID: 0}
-    icon: {fileID: 0}
+    icon: {fileID: 21300000, guid: b8bc8d134238ebe4a8c236dcf0f45fb7, type: 3}
   - tool: 1
     button: {fileID: 0}
     background: {fileID: 0}
-    icon: {fileID: 0}
+    icon: {fileID: 21300000, guid: d16855d0a35080c4a8c626b2aad7f314, type: 3}
   - tool: 2
     button: {fileID: 0}
     background: {fileID: 0}
@@ -23152,7 +23154,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PickupCent.Economy.ScoreTracker
   score: 0
-  incomeMultiplier: 3
+  incomeMultiplier: 1
 --- !u!4 &1905691900
 Transform:
   m_ObjectHideFlags: 0
@@ -24739,6 +24741,10 @@ MonoBehaviour:
   shovelBrushRadius: 0.72
   rakeBrushRadius: 0.82
   detectorBrushRadius: 0.42
+  handIcon: {fileID: 21300000, guid: b8bc8d134238ebe4a8c236dcf0f45fb7, type: 3}
+  shovelIcon: {fileID: 21300000, guid: d16855d0a35080c4a8c626b2aad7f314, type: 3}
+  rakeIcon: {fileID: 0}
+  detectorIcon: {fileID: 0}
   sandMask: {fileID: 1991588079}
   targetCamera: {fileID: 0}
 --- !u!1 &1993311854

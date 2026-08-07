@@ -12,16 +12,21 @@ namespace PickupCent.Economy
     public class ItemSpawner : MonoBehaviour
     {
         public event Action<ItemDefinition> OnItemPickedUp;
+        public event Action<ItemDefinition, int> OnItemPickedUpWithAmount;
         public event Action<DiggableItem> OnItemSpawned;
         public event Action OnSpawnBurst;
+        public event Action OnDropWeightsChanged;
 
         [SerializeField] private SandMaskController sandMask;
+        [SerializeField] private Camera targetCamera;
         [SerializeField] private ScoreTracker scoreTracker;
         [SerializeField] private ComboManager comboManager;
         [SerializeField] private ItemDefinition[] itemPool;
+        [SerializeField] private Sprite sparkleSprite1;
+        [SerializeField] private Sprite sparkleSprite2;
         [SerializeField] private int itemCount = 20;
         [Tooltip("필드 가장자리로부터 스폰을 피할 여백(월드 단위)")]
-        [SerializeField] private float edgeMargin = 0.8f;
+        [SerializeField] private float edgeMargin = 0f;
 
         [Header("지형지물 스폰 편향")]
         [SerializeField] private TerrainFeature[] terrainFeatures;
@@ -46,10 +51,20 @@ namespace PickupCent.Economy
 
         /// <summary>드랍표 UI 등에서 확률 표시용으로 읽기 위한 접근자. 스폰 로직 자체는 그대로 private itemPool을 쓴다.</summary>
         public IReadOnlyList<ItemDefinition> ItemPool => itemPool;
+        public float RareFindWeightBonus => rareFindWeightBonus;
+
+        public void SetSparkleSprites(Sprite first, Sprite second)
+        {
+            sparkleSprite1 = first;
+            sparkleSprite2 = second;
+            foreach (var item in activeItems)
+                if (item != null) item.SetSpottedMarkerSprites(sparkleSprite1, sparkleSprite2);
+        }
 
         private void Awake()
         {
             if (sandMask == null) sandMask = FindFirstObjectByType<SandMaskController>();
+            if (targetCamera == null) targetCamera = Camera.main;
             if (scoreTracker == null) scoreTracker = FindFirstObjectByType<ScoreTracker>();
             if (comboManager == null) comboManager = ComboManager.EnsureInstance();
             RecalculateWeights();
@@ -88,17 +103,27 @@ namespace PickupCent.Economy
             return itemPool[itemPool.Length - 1];
         }
 
+        public float GetAdjustedWeight(ItemDefinition def)
+        {
+            return AdjustedWeight(def);
+        }
+
+        public bool IsRareFindBonusTarget(ItemDefinition def)
+        {
+            return def != null && (def.value >= 10 || !def.detectableByMetalDetector);
+        }
+
         private float AdjustedWeight(ItemDefinition def)
         {
             float weight = Mathf.Max(0f, def.spawnWeight);
-            bool valuableOrSpecial = def.value >= 50 || !def.detectableByMetalDetector;
-            return valuableOrSpecial ? weight * (1f + rareFindWeightBonus) : weight;
+            return IsRareFindBonusTarget(def) ? weight * (1f + rareFindWeightBonus) : weight;
         }
 
         public void AddRareFindWeightBonus(float amount)
         {
             rareFindWeightBonus = Mathf.Max(0f, rareFindWeightBonus + amount);
             Debug.Log($"[ItemSpawner] 발견 확률 보너스 +{amount:P0} → 현재 +{rareFindWeightBonus:P0}, 기본 totalWeight={totalWeight:0.##}");
+            OnDropWeightsChanged?.Invoke();
         }
 
         private Vector2 PickSpawnPosition(Rect? burstBand, ItemDefinition def)
@@ -161,13 +186,14 @@ namespace PickupCent.Economy
                 Mathf.Max(0f, field.y * 0.5f - edgeMargin));
 
             Rect fieldRect = Rect.MinMaxRect(center.x - half.x, center.y - half.y, center.x + half.x, center.y + half.y);
-            if (!UICanvasUtility.TryGetPlayableStageNormalizedRect(out Rect normalizedStageRect))
+            if (targetCamera == null) targetCamera = Camera.main;
+            if (!UICanvasUtility.TryGetPlayableStageWorldInsets(targetCamera, out Vector4 stageInsets))
                 return fieldRect;
 
-            float xMin = Mathf.Lerp(fieldRect.xMin, fieldRect.xMax, normalizedStageRect.xMin);
-            float xMax = Mathf.Lerp(fieldRect.xMin, fieldRect.xMax, normalizedStageRect.xMax);
-            float yMin = Mathf.Lerp(fieldRect.yMin, fieldRect.yMax, normalizedStageRect.yMin);
-            float yMax = Mathf.Lerp(fieldRect.yMin, fieldRect.yMax, normalizedStageRect.yMax);
+            float xMin = fieldRect.xMin + stageInsets.x;
+            float yMin = fieldRect.yMin + stageInsets.y;
+            float xMax = fieldRect.xMax - stageInsets.z;
+            float yMax = fieldRect.yMax - stageInsets.w;
 
             if (xMax <= xMin || yMax <= yMin) return fieldRect;
             return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
@@ -208,6 +234,7 @@ namespace PickupCent.Economy
 
             var go = new GameObject("Item");
             var item = go.AddComponent<DiggableItem>();
+            item.SetSpottedMarkerSprites(sparkleSprite1, sparkleSprite2);
             item.Initialize(def, PickSpawnPosition(burstBand, def));
             item.OnAcquired += HandleAcquired;
             item.OnDestroyedByRisk += HandleDestroyedByRisk;
@@ -236,6 +263,7 @@ namespace PickupCent.Economy
             {
                 int amount = comboManager != null ? comboManager.RegisterPickupAndGetAmount(def) : def.value;
                 scoreTracker.Add(amount, def.itemName);
+                OnItemPickedUpWithAmount?.Invoke(def, scoreTracker.GetEarnedAmount(amount));
             }
             if (def != null) OnItemPickedUp?.Invoke(def);
             ResolveItem(item);
@@ -264,6 +292,7 @@ namespace PickupCent.Economy
         {
             var def = PickWeighted();
             if (def == null) return;
+            item.SetSpottedMarkerSprites(sparkleSprite1, sparkleSprite2);
             item.Initialize(def, PickSpawnPosition(null, def));
         }
     }

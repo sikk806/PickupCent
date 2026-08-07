@@ -7,15 +7,22 @@ namespace PickupCent.Economy
     /// </summary>
     public class ScoreTracker : MonoBehaviour
     {
+        public event System.Action OnIncomeMultiplierChanged;
+
         [SerializeField] private int score;
-        [SerializeField] private float incomeMultiplier = 3f;
+        [SerializeField] private float incomeMultiplier = 1f;
 
         public int Score => score;
         public float IncomeMultiplier => incomeMultiplier;
 
+        public int GetEarnedAmount(int amount)
+        {
+            return Mathf.Max(0, Mathf.RoundToInt(amount * incomeMultiplier));
+        }
+
         public void Add(int amount, string itemName)
         {
-            int earned = Mathf.Max(0, Mathf.RoundToInt(amount * incomeMultiplier));
+            int earned = GetEarnedAmount(amount);
             score += earned;
             Debug.Log($"[Score] +{earned} ({itemName}, 기본 {amount}, 배율 x{incomeMultiplier:0.00}) → 누적 {score}");
         }
@@ -36,6 +43,7 @@ namespace PickupCent.Economy
         {
             incomeMultiplier = Mathf.Max(0.1f, incomeMultiplier + amount);
             Debug.Log($"[Score] 수익 배율 +{amount:0.00} → x{incomeMultiplier:0.00}");
+            OnIncomeMultiplierChanged?.Invoke();
         }
     }
 }

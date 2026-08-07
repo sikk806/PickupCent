@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: BronzeCoin
   m_EditorClassIdentifier: Assembly-CSharp::PickupCent.Economy.ItemDefinition
   itemName: "\uBE0C\uB860\uC988 \uCF54\uC778"
-  value: 1
-  spawnWeight: 50
+  value: 2
+  spawnWeight: 30
   detectableByMetalDetector: 1
   shape: 0
   displayColor: {r: 0.72, g: 0.45, b: 0.2, a: 1}

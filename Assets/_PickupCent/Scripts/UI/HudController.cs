@@ -106,6 +106,9 @@ namespace PickupCent.UI
                 {
                     valueText.text = initialValue;
                     valueText.color = valueColor;
+                    var existingLabel = existing.Find("Background/Content/Label");
+                    var existingLabelLayout = existingLabel != null ? existingLabel.GetComponent<LayoutElement>() ?? existingLabel.gameObject.AddComponent<LayoutElement>() : null;
+                    if (existingLabelLayout != null) existingLabelLayout.preferredWidth = objectName == "Tool" ? 30f : -1f;
                     var existingLayout = valueText.GetComponent<LayoutElement>() ?? valueText.gameObject.AddComponent<LayoutElement>();
                     existingLayout.preferredWidth = objectName == "Tool" ? 118f : 54f;
                     return;
@@ -142,7 +145,7 @@ namespace PickupCent.UI
             var hlg = contentGO.AddComponent<HorizontalLayoutGroup>();
             hlg.spacing = 8f;
             hlg.childAlignment = TextAnchor.MiddleLeft;
-            hlg.childControlWidth = true;
+            hlg.childControlWidth = objectName != "Tool";
             hlg.childControlHeight = true;
             hlg.childForceExpandWidth = false;
             hlg.childForceExpandHeight = true;
@@ -155,7 +158,13 @@ namespace PickupCent.UI
             labelText.fontSize = 14;
             labelText.alignment = TextAnchor.MiddleLeft;
             labelText.color = PickupCentPalette.Cream;
-            labelGO.AddComponent<LayoutElement>().flexibleWidth = 1;
+            var labelElement = labelGO.AddComponent<LayoutElement>();
+            if (objectName == "Tool")
+            {
+                labelElement.preferredWidth = 30f;
+                labelGO.GetComponent<RectTransform>().sizeDelta = new Vector2(30f, 0f);
+            }
+            else labelElement.flexibleWidth = 1;
 
             var valueGO = new GameObject("Value", typeof(RectTransform));
             valueGO.transform.SetParent(contentGO.transform, false);
@@ -167,6 +176,7 @@ namespace PickupCent.UI
             valueText.alignment = TextAnchor.MiddleRight;
             valueText.color = valueColor;
             valueGO.AddComponent<LayoutElement>().preferredWidth = objectName == "Tool" ? 118f : 54f;
+            valueGO.GetComponent<RectTransform>().sizeDelta = new Vector2(objectName == "Tool" ? 118f : 54f, 0f);
         }
 
         private void BindExistingToolValue(Transform row)
@@ -177,8 +187,21 @@ namespace PickupCent.UI
             if (text == null) return;
 
             toolValueText = text;
+            var content = pill.Find("Background/Content");
+            var hlg = content != null ? content.GetComponent<HorizontalLayoutGroup>() : null;
+            if (hlg != null) hlg.childControlWidth = false;
+
+            var label = content != null ? content.Find("Label") : null;
+            if (label != null)
+            {
+                var labelLayout = label.GetComponent<LayoutElement>() ?? label.gameObject.AddComponent<LayoutElement>();
+                labelLayout.preferredWidth = 30f;
+                label.GetComponent<RectTransform>().sizeDelta = new Vector2(30f, 0f);
+            }
+
             var layout = value.GetComponent<LayoutElement>() ?? value.gameObject.AddComponent<LayoutElement>();
             layout.preferredWidth = 118f;
+            value.GetComponent<RectTransform>().sizeDelta = new Vector2(118f, 0f);
         }
 
         private void Update()

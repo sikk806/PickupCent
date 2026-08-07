@@ -7,10 +7,8 @@ using UnityEngine;
 namespace PickupCent.EditorTools
 {
     /// <summary>
-    /// [테스트용 메뉴 - 실제 게임 스테이지 번호와 무관, Test1/Test2/Test3... 순서로 계속 늘어남]
-    /// 아이템 경제 시스템(ScriptableObject 아이템 정의 5종 + ItemSpawner + ScoreTracker)을 구성한다.
-    /// Test1(파기)·Test2(도구) 셋업이 먼저 실행돼 있어야 하며, 그때 쓰던 고정 더미
-    /// (DummyItem, DummyItem_Generic)는 스포너로 대체되므로 이 메뉴가 제거한다.
+    /// 테스트용 메뉴. 아이템 경제 ScriptableObject 5종, ItemSpawner, ScoreTracker를 구성한다.
+    /// Test1 파기 시스템과 Test2 도구 시스템 구성이 먼저 필요하다.
     /// </summary>
     public static class Test3EconomySetup
     {
@@ -34,7 +32,6 @@ namespace PickupCent.EditorTools
                 return;
             }
 
-            // 기존 고정 더미 제거 (ItemSpawner가 대체)
             var oldCoin = GameObject.Find("DummyItem");
             if (oldCoin != null) Object.DestroyImmediate(oldCoin);
             var oldGeneric = GameObject.Find("DummyItem_Generic");
@@ -69,7 +66,7 @@ namespace PickupCent.EditorTools
 
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
 
-            Debug.Log("[Test3EconomySetup] 씬 구성 완료: 아이템 정의 5종(브론즈/실버/골드/구슬/딱지) 생성, " +
+            Debug.Log("[Test3EconomySetup] 씬 구성 완료: 아이템 정의 5종(브론즈/실버/골드/구슬/열쇠) 생성, " +
                       "ScoreTracker + ItemSpawner 배치, 기존 고정 더미 제거. Play하면 자동으로 아이템이 스폰됩니다.");
         }
 
@@ -79,15 +76,15 @@ namespace PickupCent.EditorTools
 
             return new[]
             {
-                CreateOrLoad("BronzeCoin", "브론즈 코인", 1, 50f, true,
+                CreateOrLoad("BronzeCoin", "브론즈 코인", 2, 30f, true,
                     ItemDefinition.ItemShape.Circle, new Color(0.72f, 0.45f, 0.20f), 0.9f),
                 CreateOrLoad("SilverCoin", "실버 코인", 5, 25f, true,
                     ItemDefinition.ItemShape.Circle, new Color(0.75f, 0.76f, 0.78f), 0.95f),
-                CreateOrLoad("GoldCoin", "골드 코인", 15, 10f, true,
+                CreateOrLoad("GoldCoin", "골드 코인", 10, 20f, true,
                     ItemDefinition.ItemShape.Circle, new Color(0.95f, 0.80f, 0.20f), 1f),
-                CreateOrLoad("Marble", "구슬", 2, 40f, false,
+                CreateOrLoad("Marble", "구슬", 15, 15f, false,
                     ItemDefinition.ItemShape.Circle, new Color(0.30f, 0.55f, 0.85f), 0.7f),
-                CreateOrLoad("Ddakji", "딱지", 4, 15f, false,
+                CreateOrLoad("Key", "열쇠", 20, 10f, false,
                     ItemDefinition.ItemShape.Square, new Color(0.80f, 0.25f, 0.25f), 1.1f),
             };
         }

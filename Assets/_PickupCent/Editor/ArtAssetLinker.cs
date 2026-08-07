@@ -12,21 +12,16 @@ using UnityEngine;
 namespace PickupCent.EditorTools
 {
     /// <summary>
-    /// [순수 에디터 유틸리티 - Test1~Test7 플레이 테스트 씬 체계와는 별개. 이 도구는 Test 번호를 붙이지 않는다]
+    /// 순수 에디터 유틸리티. Assets/_PickupCent/Art/Stage{N} 아래의 아트 파일을
+    /// 기존 컴포넌트와 ScriptableObject의 아트 슬롯에 자동으로 연결한다.
     ///
-    /// Assets/_PickupCent/Art/Stage{N}/{item,tool,sprite,texture} 밑을 재귀적으로 스캔해서,
-    /// 파일 이름 접두사에 따라 기존 컴포넌트/SO/프리팹의 아트 슬롯에 자동으로 연결한다.
-    /// 게임 로직은 건드리지 않고, 이미 있는 필드에 참조를 채워 넣는 역할만 한다.
-    /// 지금은 Stage1만 대상이지만, LinkAssetsForStage(int)가 스테이지 번호를 받으므로
-    /// 나중에 Stage2용 메뉴를 추가하는 식으로 쉽게 확장할 수 있다.
-    ///
-    /// 파일명 규칙 (확장자 제외, 접두사 뒤 나머지로 대상을 찾음):
-    ///   item_&lt;ItemDefinition 에셋 파일명&gt;      예: item_BronzeCoin.png       → Data/Items/BronzeCoin.asset의 artSprite
-    ///   tool_&lt;ToolType 이름(hand/shovel/detector)&gt;  예: tool_hand.png        → ToolBarController 도구바 아이콘
-    ///   structure_&lt;프리팹 파일명&gt;              예: structure_Slide.png      → Prefabs/Slide.prefab의 SpriteRenderer
-    ///   event_ChildrenSwarm                        예: event_ChildrenSwarm.png  → ChildrenSwarmEvent.artSprite
-    ///   terrain_..._&lt;dry|wet|dug&gt; (한글 마른/젖은/파낸도 인식) → SandMaskController의 텍스처 필드 3종
-    ///     (지역별 텍스처는 아직 구현돼 있지 않아 이름의 지역 부분은 현재 무시되고 상태만 본다 — 결과 보고 참고)
+    /// 파일명 규칙:
+    ///   item_<ItemDefinition 에셋 파일명>       예: item_BronzeCoin.png
+    ///   tool_<ToolType 이름>                    예: tool_Hand.png, tool_Shovel.png
+    ///   effect_Sparkle1 / effect_Sparkle2       예: effect_Sparkle1.png
+    ///   structure_<프리팹 파일명>               예: structure_Slide.png
+    ///   event_ChildrenSwarm                     예: event_ChildrenSwarm.png
+    ///   terrain_..._<dry|wet|dug>               한글 마른/젖은/파낸도 인식
     /// </summary>
     public static class ArtAssetLinker
     {
@@ -34,7 +29,7 @@ namespace PickupCent.EditorTools
         private const string ItemDataFolder = "Assets/_PickupCent/Data/Items";
         private const string PrefabFolder = "Assets/_PickupCent/Prefabs";
 
-        /// <summary>item/tool/sprite 폴더의 모든 스프라이트에 강제 적용하는 PPU. StageArtTexturePostprocessor도 이 값을 참조한다.</summary>
+        /// <summary>item/tool/sprite 폴더의 모든 스프라이트에 강제 적용하는 PPU.</summary>
         public const float TargetSpritePixelsPerUnit = 100f;
 
         private static readonly string[] TextureExtensions = { ".png", ".jpg", ".jpeg", ".tga", ".psd" };
@@ -52,11 +47,13 @@ namespace PickupCent.EditorTools
             string stageFolder = $"{ArtRootFolder}/Stage{stageNumber}";
             string itemFolder = $"{stageFolder}/item";
             string toolFolder = $"{stageFolder}/tool";
+            string effectFolder = $"{stageFolder}/Effect";
             string spriteFolder = $"{stageFolder}/sprite";
             string textureFolder = $"{stageFolder}/texture";
 
             EnsureFolderPath(itemFolder);
             EnsureFolderPath(toolFolder);
+            EnsureFolderPath(effectFolder);
             EnsureFolderPath(spriteFolder);
             EnsureFolderPath(textureFolder);
 
@@ -65,6 +62,7 @@ namespace PickupCent.EditorTools
 
             ScanFolder(itemFolder, "item_", LinkItem, ref linked, ref skipped);
             ScanFolder(toolFolder, "tool_", LinkTool, ref linked, ref skipped);
+            ScanFolder(effectFolder, "effect_", LinkEffect, ref linked, ref skipped);
             ScanFolder(spriteFolder, "structure_", LinkStructure, ref linked, ref skipped);
             ScanFolder(spriteFolder, "event_", LinkEvent, ref linked, ref skipped);
             ScanFolder(textureFolder, "terrain_", LinkTerrain, ref linked, ref skipped);
@@ -72,13 +70,9 @@ namespace PickupCent.EditorTools
             AssetDatabase.SaveAssets();
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
 
-            Debug.Log($"[ArtAssetLinker] Stage{stageNumber} 스캔 완료 — 연결 {linked}개, 건너뜀 {skipped}개 " +
-                      $"(스캔 폴더: {stageFolder}/{{item,tool,sprite,texture}})");
+            Debug.Log($"[ArtAssetLinker] Stage{stageNumber} 스캔 완료 - 연결 {linked}개, 건너뜀 {skipped}개 " +
+                      $"(스캔 폴더: {stageFolder}/{{item,tool,Effect,sprite,texture}})");
         }
-
-        // ------------------------------------------------------------------
-        // 폴더 스캔
-        // ------------------------------------------------------------------
 
         private static void ScanFolder(string folder, string prefix, Func<string, string, bool> handler,
             ref int linked, ref int skipped)
@@ -102,10 +96,6 @@ namespace PickupCent.EditorTools
             }
         }
 
-        // ------------------------------------------------------------------
-        // 접두사별 연결 로직
-        // ------------------------------------------------------------------
-
         private static bool LinkItem(string suffix, string path)
         {
             var defs = FindAllAssets<ItemDefinition>(ItemDataFolder);
@@ -121,9 +111,13 @@ namespace PickupCent.EditorTools
 
             if (match == null)
             {
-                Debug.LogWarning($"[ArtAssetLinker] item_{suffix} — 일치하는 ItemDefinition을 찾지 못했습니다 " +
-                                  $"({ItemDataFolder} 안에 '{suffix}.asset'이 있어야 함) — {path}");
-                return false;
+                match = ScriptableObject.CreateInstance<ItemDefinition>();
+                match.name = suffix;
+                match.itemName = suffix;
+                string assetPath = $"{ItemDataFolder}/{suffix}.asset";
+                AssetDatabase.CreateAsset(match, assetPath);
+                AssetDatabase.SaveAssets();
+                Debug.Log($"[ArtAssetLinker] item_{suffix} -> ItemDefinition 생성 ({assetPath})");
             }
 
             var sprite = SetupSpriteImport(path);
@@ -131,33 +125,57 @@ namespace PickupCent.EditorTools
 
             match.artSprite = sprite;
             EditorUtility.SetDirty(match);
-            Debug.Log($"[ArtAssetLinker] item_{suffix} → ItemDefinition '{match.name}'.artSprite 연결됨 ({path})");
+            Debug.Log($"[ArtAssetLinker] item_{suffix} -> ItemDefinition '{match.name}'.artSprite 연결 ({path})");
             return true;
         }
 
         private static bool LinkTool(string suffix, string path)
         {
+            var sprite = SetupSpriteImport(path);
+            if (sprite == null) return false;
+
+            bool found = false;
+            if (Enum.TryParse(suffix, true, out ToolManager.ToolType tool))
+            {
+                var toolManager = UnityEngine.Object.FindFirstObjectByType<ToolManager>();
+                if (toolManager != null)
+                {
+                    var toolManagerSo = new SerializedObject(toolManager);
+                    string fieldName = tool switch
+                    {
+                        ToolManager.ToolType.Hand => "handIcon",
+                        ToolManager.ToolType.Shovel => "shovelIcon",
+                        ToolManager.ToolType.Rake => "rakeIcon",
+                        ToolManager.ToolType.Detector => "detectorIcon",
+                        _ => null
+                    };
+
+                    if (!string.IsNullOrEmpty(fieldName))
+                    {
+                        toolManagerSo.FindProperty(fieldName).objectReferenceValue = sprite;
+                        toolManagerSo.ApplyModifiedPropertiesWithoutUndo();
+                        found = true;
+                    }
+                }
+            }
+
             var toolBarGO = GameObject.Find("ToolBar");
             var toolBar = toolBarGO != null ? toolBarGO.GetComponent<ToolBarController>() : null;
             if (toolBar == null)
             {
-                Debug.LogWarning($"[ArtAssetLinker] tool_{suffix} — 씬에서 ToolBar(ToolBarController)를 찾지 못했습니다 " +
-                                  $"(Test5 미실행?) — {path}");
-                return false;
+                if (!found)
+                    Debug.LogWarning($"[ArtAssetLinker] tool_{suffix} -> ToolBar/ToolManager를 찾지 못했습니다 ({path})");
+                return found;
             }
 
             var so = new SerializedObject(toolBar);
             var entriesProp = so.FindProperty("entries");
-            bool found = false;
             for (int i = 0; i < entriesProp.arraySize; i++)
             {
                 var entryProp = entriesProp.GetArrayElementAtIndex(i);
                 var toolProp = entryProp.FindPropertyRelative("tool");
                 string toolName = ((ToolManager.ToolType)toolProp.enumValueIndex).ToString();
                 if (!string.Equals(toolName, suffix, StringComparison.OrdinalIgnoreCase)) continue;
-
-                var sprite = SetupSpriteImport(path);
-                if (sprite == null) return false;
 
                 entryProp.FindPropertyRelative("icon").objectReferenceValue = sprite;
                 found = true;
@@ -167,12 +185,45 @@ namespace PickupCent.EditorTools
 
             if (!found)
             {
-                Debug.LogWarning($"[ArtAssetLinker] tool_{suffix} — 일치하는 도구 버튼을 찾지 못했습니다 " +
-                                  $"(hand / shovel / detector 중 하나여야 함) — {path}");
+                Debug.LogWarning($"[ArtAssetLinker] tool_{suffix} -> 일치하는 도구 버튼을 찾지 못했습니다 " +
+                                  $"(hand / shovel / detector 중 하나여야 함) ({path})");
                 return false;
             }
 
-            Debug.Log($"[ArtAssetLinker] tool_{suffix} → 도구바 '{suffix}' 아이콘 연결됨 ({path})");
+            Debug.Log($"[ArtAssetLinker] tool_{suffix} -> 도구 아이콘 연결 ({path})");
+            return true;
+        }
+
+        private static bool LinkEffect(string suffix, string path)
+        {
+            string fieldName = suffix.ToLowerInvariant() switch
+            {
+                "sparkle1" => "sparkleSprite1",
+                "sparkle2" => "sparkleSprite2",
+                _ => null
+            };
+
+            if (string.IsNullOrEmpty(fieldName))
+            {
+                Debug.LogWarning($"[ArtAssetLinker] effect_{suffix} -> 알 수 없는 이펙트 이름입니다 ({path})");
+                return false;
+            }
+
+            var itemSpawner = UnityEngine.Object.FindFirstObjectByType<ItemSpawner>();
+            if (itemSpawner == null)
+            {
+                Debug.LogWarning($"[ArtAssetLinker] effect_{suffix} -> ItemSpawner를 찾지 못했습니다 ({path})");
+                return false;
+            }
+
+            var sprite = SetupSpriteImport(path);
+            if (sprite == null) return false;
+
+            var so = new SerializedObject(itemSpawner);
+            so.FindProperty(fieldName).objectReferenceValue = sprite;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            Debug.Log($"[ArtAssetLinker] effect_{suffix} -> ItemSpawner.{fieldName} 연결 ({path})");
             return true;
         }
 
@@ -181,8 +232,8 @@ namespace PickupCent.EditorTools
             string prefabPath = FindAssetPathByName(PrefabFolder, "t:Prefab", suffix);
             if (prefabPath == null)
             {
-                Debug.LogWarning($"[ArtAssetLinker] structure_{suffix} — 일치하는 지형지물 프리팹을 찾지 못했습니다 " +
-                                  $"({PrefabFolder} 안에 '{suffix}.prefab'이 있어야 함) — {path}");
+                Debug.LogWarning($"[ArtAssetLinker] structure_{suffix} -> 일치하는 지형지물 프리팹을 찾지 못했습니다 " +
+                                  $"({PrefabFolder} 안에 '{suffix}.prefab'이 있어야 함) ({path})");
                 return false;
             }
 
@@ -195,7 +246,7 @@ namespace PickupCent.EditorTools
                 var sr = prefabRoot.GetComponentInChildren<SpriteRenderer>(true);
                 if (sr == null)
                 {
-                    Debug.LogWarning($"[ArtAssetLinker] structure_{suffix} — 프리팹에 SpriteRenderer가 없습니다 ({prefabPath})");
+                    Debug.LogWarning($"[ArtAssetLinker] structure_{suffix} -> 프리팹에 SpriteRenderer가 없습니다 ({prefabPath})");
                     return false;
                 }
 
@@ -207,7 +258,7 @@ namespace PickupCent.EditorTools
                 PrefabUtility.UnloadPrefabContents(prefabRoot);
             }
 
-            Debug.Log($"[ArtAssetLinker] structure_{suffix} → 프리팹 '{prefabPath}'의 SpriteRenderer 연결됨 ({path})");
+            Debug.Log($"[ArtAssetLinker] structure_{suffix} -> 프리팹 '{prefabPath}' SpriteRenderer 연결 ({path})");
             return true;
         }
 
@@ -216,8 +267,8 @@ namespace PickupCent.EditorTools
             const string expectedName = "ChildrenSwarm";
             if (!string.Equals(suffix, expectedName, StringComparison.OrdinalIgnoreCase))
             {
-                Debug.LogWarning($"[ArtAssetLinker] event_{suffix} — 알 수 없는 이벤트 이름입니다 " +
-                                  $"('{expectedName}'만 지원) — {path}");
+                Debug.LogWarning($"[ArtAssetLinker] event_{suffix} -> 알 수 없는 이벤트 이름입니다 " +
+                                  $"('{expectedName}'만 지원) ({path})");
                 return false;
             }
 
@@ -225,8 +276,8 @@ namespace PickupCent.EditorTools
             var swarmEvent = swarmGO != null ? swarmGO.GetComponent<ChildrenSwarmEvent>() : null;
             if (swarmEvent == null)
             {
-                Debug.LogWarning($"[ArtAssetLinker] event_{suffix} — 씬에서 ChildrenSwarmEvent를 찾지 못했습니다 " +
-                                  $"(Test6 미실행?) — {path}");
+                Debug.LogWarning($"[ArtAssetLinker] event_{suffix} -> 씬에서 ChildrenSwarmEvent를 찾지 못했습니다 " +
+                                  $"(Test6 미실행?) ({path})");
                 return false;
             }
 
@@ -237,7 +288,7 @@ namespace PickupCent.EditorTools
             so.FindProperty("artSprite").objectReferenceValue = sprite;
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            Debug.Log($"[ArtAssetLinker] event_{suffix} → ChildrenSwarmEvent.artSprite 연결됨 ({path})");
+            Debug.Log($"[ArtAssetLinker] event_{suffix} -> ChildrenSwarmEvent.artSprite 연결 ({path})");
             return true;
         }
 
@@ -254,9 +305,9 @@ namespace PickupCent.EditorTools
             else if (state.Contains("파낸") || state.Contains("dug")) fieldName = "dugFloorTexture";
             else
             {
-                Debug.LogWarning($"[ArtAssetLinker] terrain_{suffix} — 상태를 인식하지 못했습니다 " +
+                Debug.LogWarning($"[ArtAssetLinker] terrain_{suffix} -> 상태를 인식하지 못했습니다 " +
                                   "(마른/dry, 젖은/wet, 파낸/dug 중 하나가 파일명 끝부분에 포함돼야 함) " +
-                                  $"— {path}");
+                                  $"({path})");
                 return false;
             }
 
@@ -264,8 +315,8 @@ namespace PickupCent.EditorTools
             var mask = sandGO != null ? sandGO.GetComponent<SandMaskController>() : null;
             if (mask == null)
             {
-                Debug.LogWarning($"[ArtAssetLinker] terrain_{suffix} — 씬에서 SandMaskController를 찾지 못했습니다 " +
-                                  $"(Test1 미실행?) — {path}");
+                Debug.LogWarning($"[ArtAssetLinker] terrain_{suffix} -> 씬에서 SandMaskController를 찾지 못했습니다 " +
+                                  $"(Test1 미실행?) ({path})");
                 return false;
             }
 
@@ -276,21 +327,17 @@ namespace PickupCent.EditorTools
             so.FindProperty(fieldName).objectReferenceValue = texture;
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            Debug.Log($"[ArtAssetLinker] terrain_{suffix} → SandMaskController.{fieldName} 연결됨 " +
+            Debug.Log($"[ArtAssetLinker] terrain_{suffix} -> SandMaskController.{fieldName} 연결 " +
                       "(지역별 구분은 아직 없어 이름의 지역 부분은 무시됨, 셰이더에서는 아직 미사용) " +
                       $"({path})");
             return true;
         }
 
-        // ------------------------------------------------------------------
-        // 텍스처 임포트 설정
-        // ------------------------------------------------------------------
-
         private static Sprite SetupSpriteImport(string path)
         {
             if (!(AssetImporter.GetAtPath(path) is TextureImporter importer))
             {
-                Debug.LogWarning($"[ArtAssetLinker] {path} — TextureImporter를 가져오지 못했습니다.");
+                Debug.LogWarning($"[ArtAssetLinker] {path} -> TextureImporter를 가져오지 못했습니다");
                 return null;
             }
 
@@ -300,15 +347,13 @@ namespace PickupCent.EditorTools
                 importer.textureType = TextureImporterType.Sprite;
                 changed = true;
             }
-            // spriteImportMode가 Multiple/None이면 LoadAssetAtPath<Sprite>가 실패하거나
-            // 예상과 다른 서브 스프라이트를 반환할 수 있어 항상 Single로 고정한다.
+
             if (importer.spriteImportMode != SpriteImportMode.Single)
             {
                 importer.spriteImportMode = SpriteImportMode.Single;
                 changed = true;
             }
-            // Stage1/item(및 다른 아이템 폴더)의 모든 스프라이트는 PPU를 통일한다 — 하드코딩 없이
-            // TargetSpritePixelsPerUnit 상수 하나로만 관리(StageArtTexturePostprocessor와 공유).
+
             if (!Mathf.Approximately(importer.spritePixelsPerUnit, TargetSpritePixelsPerUnit))
             {
                 importer.spritePixelsPerUnit = TargetSpritePixelsPerUnit;
@@ -320,7 +365,7 @@ namespace PickupCent.EditorTools
 
             var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
             if (sprite == null)
-                Debug.LogWarning($"[ArtAssetLinker] {path} — Sprite로 로드하지 못했습니다.");
+                Debug.LogWarning($"[ArtAssetLinker] {path} -> Sprite로 로드하지 못했습니다");
             return sprite;
         }
 
@@ -328,7 +373,7 @@ namespace PickupCent.EditorTools
         {
             if (!(AssetImporter.GetAtPath(path) is TextureImporter importer))
             {
-                Debug.LogWarning($"[ArtAssetLinker] {path} — TextureImporter를 가져오지 못했습니다.");
+                Debug.LogWarning($"[ArtAssetLinker] {path} -> TextureImporter를 가져오지 못했습니다");
                 return null;
             }
 
@@ -344,11 +389,10 @@ namespace PickupCent.EditorTools
 
             var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             if (texture == null)
-                Debug.LogWarning($"[ArtAssetLinker] {path} — Texture2D로 로드하지 못했습니다.");
+                Debug.LogWarning($"[ArtAssetLinker] {path} -> Texture2D로 로드하지 못했습니다");
             return texture;
         }
 
-        /// <summary>Filter Mode = Point, Compression = None. 이미 그렇다면 변경하지 않는다(불필요한 재임포트 방지).</summary>
         private static bool ApplyCommonImportSettings(TextureImporter importer)
         {
             bool changed = false;
@@ -364,10 +408,6 @@ namespace PickupCent.EditorTools
             }
             return changed;
         }
-
-        // ------------------------------------------------------------------
-        // 공용 헬퍼
-        // ------------------------------------------------------------------
 
         private static List<T> FindAllAssets<T>(string folder) where T : UnityEngine.Object
         {
@@ -402,7 +442,7 @@ namespace PickupCent.EditorTools
             if (AssetDatabase.IsValidFolder(path)) return;
 
             string[] parts = path.Split('/');
-            string current = parts[0]; // "Assets"
+            string current = parts[0];
             for (int i = 1; i < parts.Length; i++)
             {
                 string next = $"{current}/{parts[i]}";

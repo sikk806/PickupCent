@@ -30,6 +30,8 @@ namespace PickupCent.Economy
         private readonly List<ItemDefinition> history = new List<ItemDefinition>(HistoryCapacity);
 
         public int Combo => combo;
+        public float CurrentBonusMultiplier => GetBonusMultiplier(combo);
+        public int CurrentBonusPercent => Mathf.RoundToInt((CurrentBonusMultiplier - 1f) * 100f);
 
         /// <summary>다음 리셋까지 남은 시간의 비율(1=방금 습득, 0=곧 리셋) — 콤보 바 표시용.</summary>
         public float RemainingRatio => combo > 0 && comboWindowSeconds > 0f ? Mathf.Clamp01(timer / comboWindowSeconds) : 0f;
@@ -62,8 +64,7 @@ namespace PickupCent.Economy
             history.Add(def);
             if (history.Count > HistoryCapacity) history.RemoveAt(0);
 
-            int step = combo / comboStepSize;
-            float multiplier = 1f + step * multiplierPerStep;
+            float multiplier = GetBonusMultiplier(combo);
             int finalAmount = Mathf.RoundToInt((def != null ? def.value : 0) * multiplier);
 
             OnComboChanged?.Invoke(combo);
@@ -81,6 +82,12 @@ namespace PickupCent.Economy
                 history.Clear();
                 OnComboChanged?.Invoke(combo);
             }
+        }
+
+        private float GetBonusMultiplier(int comboValue)
+        {
+            int step = comboStepSize > 0 ? comboValue / comboStepSize : 0;
+            return 1f + step * multiplierPerStep;
         }
     }
 }

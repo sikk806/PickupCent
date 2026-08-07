@@ -23,6 +23,7 @@ namespace PickupCent.UI
         }
 
         [SerializeField] private ItemSpawner itemSpawner;
+        [SerializeField] private ScoreTracker scoreTracker;
 
         private Category selectedCategory = Category.Item;
         private Transform listContainer;
@@ -38,8 +39,30 @@ namespace PickupCent.UI
         private void Awake()
         {
             if (itemSpawner == null) itemSpawner = FindFirstObjectByType<ItemSpawner>();
+            if (scoreTracker == null) scoreTracker = FindFirstObjectByType<ScoreTracker>();
 
             BuildUI();
+            RefreshList();
+            UICanvasUtility.RefreshSidePanelLayout();
+        }
+
+        private void OnEnable()
+        {
+            if (itemSpawner == null) itemSpawner = FindFirstObjectByType<ItemSpawner>();
+            if (scoreTracker == null) scoreTracker = FindFirstObjectByType<ScoreTracker>();
+
+            if (itemSpawner != null) itemSpawner.OnDropWeightsChanged += HandleDropTableChanged;
+            if (scoreTracker != null) scoreTracker.OnIncomeMultiplierChanged += HandleDropTableChanged;
+        }
+
+        private void OnDisable()
+        {
+            if (itemSpawner != null) itemSpawner.OnDropWeightsChanged -= HandleDropTableChanged;
+            if (scoreTracker != null) scoreTracker.OnIncomeMultiplierChanged -= HandleDropTableChanged;
+        }
+
+        private void HandleDropTableChanged()
+        {
             RefreshList();
             UICanvasUtility.RefreshSidePanelLayout();
         }
@@ -149,20 +172,19 @@ namespace PickupCent.UI
 
             float total = 0f;
             foreach (var def in pool)
-                if (def != null) total += Mathf.Max(0f, def.spawnWeight);
+                if (def != null) total += GetDisplayWeight(def);
             if (total <= 0f) return;
 
             bool wantTrash = selectedCategory == Category.Trash;
 
-            // 웹 프로토타입과 동일하게 가중치(등장 확률) 내림차순으로 정렬해서 보여준다.
             var list = pool
                 .Where(def => def != null && (def.value <= 0) == wantTrash)
-                .OrderByDescending(def => def.spawnWeight)
+                .OrderBy(GetDropTableOrder)
                 .ToList();
 
             foreach (var def in list)
             {
-                float percent = Mathf.Max(0f, def.spawnWeight) / total * 100f;
+                float percent = GetDisplayWeight(def) / total * 100f;
                 CreateRow(def, percent);
             }
 
@@ -211,7 +233,7 @@ namespace PickupCent.UI
             nameGO.transform.SetParent(rowGO.transform, false);
             var nameText = nameGO.AddComponent<Text>();
             nameText.font = PickupCentFonts.Default;
-            nameText.text = def.itemName;
+            nameText.text = FormatDisplayName(def);
             nameText.color = PickupCentPalette.Cream;
             nameText.fontSize = 12;
             nameText.alignment = TextAnchor.MiddleLeft;
@@ -253,6 +275,36 @@ namespace PickupCent.UI
             return def.shape == ItemDefinition.ItemShape.Circle
                 ? ProceduralSprites.CreateCircle(28, def.displayColor, 1f)
                 : ProceduralSprites.CreateSquare(28, def.displayColor, 1f);
+        }
+
+        private float GetDisplayWeight(ItemDefinition def)
+        {
+            if (def == null) return 0f;
+            return itemSpawner != null ? itemSpawner.GetAdjustedWeight(def) : Mathf.Max(0f, def.spawnWeight);
+        }
+
+        private int GetDisplayAmount(ItemDefinition def)
+        {
+            if (def == null) return 0;
+            return scoreTracker != null ? scoreTracker.GetEarnedAmount(def.value) : Mathf.Max(0, def.value);
+        }
+
+        private string FormatDisplayName(ItemDefinition def)
+        {
+            if (def == null) return string.Empty;
+            return def.value > 0 ? $"{def.itemName} (+{GetDisplayAmount(def)})" : def.itemName;
+        }
+
+        private static int GetDropTableOrder(ItemDefinition def)
+        {
+            if (def == null) return int.MaxValue;
+            string key = def.name;
+            if (key == "BronzeCoin" || def.itemName == "브론즈 코인") return 0;
+            if (key == "SilverCoin" || def.itemName == "실버 코인") return 1;
+            if (key == "GoldCoin" || def.itemName == "골드 코인") return 2;
+            if (key == "Marble" || def.itemName == "구슬") return 3;
+            if (key == "Key" || def.itemName == "열쇠") return 4;
+            return 1000;
         }
     }
 }

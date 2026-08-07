@@ -27,6 +27,7 @@ namespace PickupCent.UI
         private Transform historyRow;
         private Image fireBorderImage;
         private bool fireActive;
+        private int lastCombo;
 
         private void Awake()
         {
@@ -118,7 +119,7 @@ namespace PickupCent.UI
             comboText.fontSize = 15;
             comboText.color = PickupCentPalette.ComboOrange;
             comboText.alignment = TextAnchor.MiddleRight;
-            valueGO.AddComponent<LayoutElement>().preferredWidth = 60f;
+            valueGO.AddComponent<LayoutElement>().preferredWidth = 96f;
         }
 
         /// <summary>콤보 리셋까지 남은 시간 비율(ComboManager.RemainingRatio)을 매 프레임 보여주는 바.</summary>
@@ -240,12 +241,21 @@ namespace PickupCent.UI
         {
             if (blockRoot != null) blockRoot.SetActive(true);
 
-            int displayValue = combo <= 1 ? 0 : combo < 10 ? combo : (combo / 10) * 10;
-            if (comboText != null) comboText.text = "x" + displayValue;
+            lastCombo = combo;
+            UpdateComboText();
             if (comboManager != null) RebuildHistorySlots(comboManager.History);
 
             fireActive = combo >= fireBorderThreshold;
             if (fireBorderImage != null) fireBorderImage.gameObject.SetActive(fireActive);
+        }
+
+        private void UpdateComboText()
+        {
+            if (comboText == null) return;
+
+            int displayValue = lastCombo <= 1 ? 0 : lastCombo < 10 ? lastCombo : (lastCombo / 10) * 10;
+            int bonusPercent = comboManager != null ? comboManager.CurrentBonusPercent : 0;
+            comboText.text = bonusPercent > 0 ? $"x{displayValue} +{bonusPercent}%" : $"x{displayValue}";
         }
 
         private void Update()

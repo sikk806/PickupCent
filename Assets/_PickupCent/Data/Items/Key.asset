@@ -10,12 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 53ca9d26c05f1484e92c0da46be3bd95, type: 3}
-  m_Name: Ddakji
+  m_Name: Key
   m_EditorClassIdentifier: Assembly-CSharp::PickupCent.Economy.ItemDefinition
-  itemName: "\uB531\uC9C0"
-  value: 4
-  spawnWeight: 15
+  itemName: "\uC5F4\uC1E0"
+  value: 20
+  spawnWeight: 10
   detectableByMetalDetector: 0
   shape: 1
   displayColor: {r: 0.8, g: 0.25, b: 0.25, a: 1}
   displaySize: 1.1
+  artSprite: {fileID: 21300000, guid: e4864b50155b97c4f930c508b244201d, type: 3}

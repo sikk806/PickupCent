@@ -20,7 +20,7 @@ namespace PickupCent.UI
         private void Awake()
         {
             if (itemSpawner == null) itemSpawner = FindFirstObjectByType<ItemSpawner>();
-            if (itemSpawner != null) itemSpawner.OnItemPickedUp += HandlePickedUp;
+            if (itemSpawner != null) itemSpawner.OnItemPickedUpWithAmount += HandlePickedUp;
 
             CleanUpLegacyElements();
             BuildUI();
@@ -28,7 +28,7 @@ namespace PickupCent.UI
 
         private void OnDestroy()
         {
-            if (itemSpawner != null) itemSpawner.OnItemPickedUp -= HandlePickedUp;
+            if (itemSpawner != null) itemSpawner.OnItemPickedUpWithAmount -= HandlePickedUp;
         }
 
         /// <summary>Test5UISetup(예전 에디터 메뉴)가 만들어 뒀던 습득 피드백 텍스트는 이제 이 컴포넌트가
@@ -89,10 +89,10 @@ namespace PickupCent.UI
             pillGO.SetActive(false);
         }
 
-        private void HandlePickedUp(ItemDefinition def)
+        private void HandlePickedUp(ItemDefinition def, int earnedAmount)
         {
             if (feedbackText == null || def == null) return;
-            feedbackText.text = $"{def.itemName} +{def.value}";
+            feedbackText.text = $"{def.itemName} +{earnedAmount}";
             pillGO.SetActive(true);
             timer = displayDuration;
         }

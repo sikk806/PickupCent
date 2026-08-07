@@ -8,7 +8,7 @@ namespace PickupCent.Digging
     /// <summary>
     /// 파낼 수 있는 아이템 하나. 몸 주변 9개 체크포인트의 마스크 값을 확인해서
     /// 75% 이상이 알파 10 이하(=뚫림)가 되면 습득 처리한다. 손/삽/금속탐지기 전부 이 파기 경로를
-    /// 공유하므로 도구 종류나 아이템 종류(코인/구슬/딱지)와 무관하게 파면 습득할 수 있다.
+    /// 공유하므로 도구 종류나 아이템 종류(코인/구슬/열쇠)와 무관하게 파면 습득할 수 있다.
     /// itemDefinition이 있으면(ItemSpawner가 생성) 그 값으로 점수/탐지가능여부를 판단하고,
     /// 없으면(Test1/Test2의 고정 더미) 예전처럼 값 없이 습득 로그만 남긴다 ? 하위 호환용.
     /// </summary>
@@ -22,6 +22,9 @@ namespace PickupCent.Digging
         [Header("금속탐지기 발견 표시(마커) - 습득과 무관한 정보성 표시")]
         [SerializeField] private Color spottedMarkerColor = new Color(1f, 0.95f, 0.2f);
         [SerializeField] private float spottedMarkerSize = 0.3f;
+        [SerializeField] private Sprite sparkleSprite1;
+        [SerializeField] private Sprite sparkleSprite2;
+        [SerializeField] private float sparkleSwapInterval = 0.5f;
 
         [Tooltip(
             "체크포인트 3x3 격자가 퍼지는 반경(로컬 단위). itemDefinition이 있으면 자동 계산되어 이 값을 " +
@@ -64,6 +67,8 @@ namespace PickupCent.Digging
         private bool destroyed;
         private bool spotted;
         private float detectorHoverTimer;
+        private float sparkleTimer;
+        private bool useSecondSparkle;
 
         private string DisplayName => itemDefinition != null ? itemDefinition.itemName : name;
 
@@ -97,9 +102,17 @@ namespace PickupCent.Digging
             HideSpottedMarker();
 
             if (sr == null) sr = GetComponent<SpriteRenderer>();
+            ApplySpottedMarkerSprite();
             RecalculateCheckRadius();
             GenerateOffsets();
             ApplyVisual();
+        }
+
+        public void SetSpottedMarkerSprites(Sprite first, Sprite second)
+        {
+            sparkleSprite1 = first;
+            sparkleSprite2 = second;
+            ApplySpottedMarkerSprite();
         }
 
         /// <summary>
@@ -140,10 +153,19 @@ namespace PickupCent.Digging
             markerGO.transform.localPosition = new Vector3(0f, 0f, -1f);
 
             spottedMarker = markerGO.AddComponent<SpriteRenderer>();
-            spottedMarker.sprite = ProceduralSprites.CreateCircle(32, spottedMarkerColor, spottedMarkerSize);
+            ApplySpottedMarkerSprite();
             spottedMarker.color = new Color(1f, 1f, 1f, 0.8f);
             spottedMarker.sortingOrder = 10;
             markerGO.SetActive(false);
+        }
+
+        private void ApplySpottedMarkerSprite()
+        {
+            if (spottedMarker == null) return;
+            Sprite sparkle = useSecondSparkle ? sparkleSprite2 : sparkleSprite1;
+            spottedMarker.sprite = sparkle != null
+                ? sparkle
+                : ProceduralSprites.CreateCircle(32, spottedMarkerColor, spottedMarkerSize);
         }
 
         private void ApplyVisual()
@@ -181,6 +203,8 @@ namespace PickupCent.Digging
         private void Update()
         {
             if (destroyed || sandMask == null) return;
+
+            UpdateSparkleAnimation();
 
             timer += Time.deltaTime;
             if (timer < checkInterval) return;
@@ -244,6 +268,18 @@ namespace PickupCent.Digging
             OnAcquired?.Invoke(this);
         }
 
+        private void UpdateSparkleAnimation()
+        {
+            if (!spotted || spottedMarker == null || sparkleSprite1 == null || sparkleSprite2 == null) return;
+
+            sparkleTimer += Time.deltaTime;
+            if (sparkleTimer < sparkleSwapInterval) return;
+
+            sparkleTimer = 0f;
+            useSecondSparkle = !useSecondSparkle;
+            ApplySpottedMarkerSprite();
+        }
+
         /// <summary>
         /// 금속탐지기 장착 중 매 프레임 호출(클릭 여부 무관). 습득이 아니라 "발견 표시"만 한다 ?
         /// itemDefinition.detectableByMetalDetector가 true인 아이템에 한해, 마우스가 반경 안에
@@ -279,6 +315,9 @@ namespace PickupCent.Digging
         {
             spotted = false;
             detectorHoverTimer = 0f;
+            sparkleTimer = 0f;
+            useSecondSparkle = false;
+            ApplySpottedMarkerSprite();
             if (spottedMarker != null) spottedMarker.gameObject.SetActive(false);
         }
 
@@ -287,6 +326,9 @@ namespace PickupCent.Digging
             if (spotted) return;
             spotted = true;
             detectorHoverTimer = 0f;
+            sparkleTimer = 0f;
+            useSecondSparkle = false;
+            ApplySpottedMarkerSprite();
             if (spottedMarker != null) spottedMarker.gameObject.SetActive(true);
             OnSpotted?.Invoke(this);
         }

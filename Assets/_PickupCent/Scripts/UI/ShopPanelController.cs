@@ -11,7 +11,7 @@ using UnityEngine.UI;
 namespace PickupCent.UI
 {
     /// <summary>
-    /// HTML ?꾨줈?좏??낆쓽 shopScreen 援ъ“??留욎텣 ?곸젏. ?꾧뎄/媛뺥솕/?먮룞???곗씠?곕? ?고???UI濡??쒖떆?쒕떎.
+    /// shopScreen 구조에 맞춘 상점 패널. 도구와 패시브 데이터를 UI로 표시한다.
     /// </summary>
     public class ShopPanelController : MonoBehaviour
     {
@@ -37,6 +37,7 @@ namespace PickupCent.UI
         private int rareFindLevel;
         private int durabilityLevel;
         private const int MaxPassiveLevel = 5;
+        private const float RareFindBonusPerLevel = 0.2f;
 
         public event Action<bool> OnPanelToggled;
 
@@ -288,7 +289,6 @@ namespace PickupCent.UI
             CreateSectionTitle("TOOLS");
             CreateToolRow(ToolManager.ToolType.Hand, ToolManager.ToolLabel(ToolManager.ToolType.Hand), "무한 내구도. 파기 범위가 좁습니다.");
             CreateToolRow(ToolManager.ToolType.Shovel, ToolManager.ToolLabel(ToolManager.ToolType.Shovel), "표준 도구. 손보다 훨씬 넓게 팝니다.");
-            CreateToolRow(ToolManager.ToolType.Rake, ToolManager.ToolLabel(ToolManager.ToolType.Rake), "가로로 넓은 타원형으로 긁습니다.");
             CreateToolRow(ToolManager.ToolType.Detector, ToolManager.ToolLabel(ToolManager.ToolType.Detector), "근처 동전을 별 표시로 찾아냅니다.");
         }
 
@@ -302,7 +302,7 @@ namespace PickupCent.UI
 
             CreateSectionTitle("PASSIVES");
             CreatePassiveRow("수익 증가", "습득 금액이 영구적으로 증가합니다.", 90, () => incomeLevel, () => { scoreTracker?.AddIncomeMultiplier(0.15f); incomeLevel++; });
-            CreatePassiveRow("발견 확률 증가", "가치 있는 발견물 확률이 증가합니다.", 110, () => rareFindLevel, () => { itemSpawner?.AddRareFindWeightBonus(0.15f); rareFindLevel++; });
+            CreatePassiveRow("발견 확률 증가", "행운이 증가합니다.", 110, () => rareFindLevel, () => { itemSpawner?.AddRareFindWeightBonus(RareFindBonusPerLevel); rareFindLevel++; });
             CreatePassiveRow("내구도 개선", "구매한 도구들의 최대 내구도가 증가합니다.", 100, () => durabilityLevel, () => { toolManager?.AddDurabilityCapacityBonus(20f); durabilityLevel++; });
             CreateChildrenEventRow();
         }
@@ -325,6 +325,7 @@ namespace PickupCent.UI
         {
             var row = CreateListRow($"Tool_{tool}");
             CreateLeft(row.transform, IconForTool(tool), name, desc, out var nameText, out var descText);
+            ApplyToolSpriteIcon(row.transform, tool);
             var right = CreateRight(row.transform);
             var badge = CreateBadge(right, "장착중");
             var bar = CreateMiniBar(right);
@@ -518,6 +519,29 @@ namespace PickupCent.UI
             hlg.childForceExpandWidth = false;
             hlg.childForceExpandHeight = true;
             return right.transform;
+        }
+
+        private void ApplyToolSpriteIcon(Transform row, ToolManager.ToolType tool)
+        {
+            Sprite sprite = toolManager != null ? toolManager.GetToolIcon(tool) : null;
+            if (sprite == null) return;
+
+            var iconSlot = row.Find("RowLeft/Icon");
+            if (iconSlot == null) return;
+
+            var oldText = iconSlot.Find("IconText");
+            if (oldText != null) UICanvasUtility.DestroyObjectSafe(oldText.gameObject);
+
+            var iconGO = new GameObject("IconImage", typeof(RectTransform));
+            iconGO.transform.SetParent(iconSlot, false);
+            var rt = (RectTransform)iconGO.transform;
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(24f, 24f);
+            var image = iconGO.AddComponent<Image>();
+            image.sprite = sprite;
+            image.preserveAspect = true;
+            image.raycastTarget = false;
         }
 
         private Text CreateInlineText(Transform parent, string value, int size, Color color, float width)
@@ -719,7 +743,7 @@ namespace PickupCent.UI
         private void LogShopListDiagnostics()
         {
             if (listContent == null || overlayRoot == null) return;
-            int sourceCount = activeTab == ShopTab.Tools ? 4 : CountPassiveSources();
+            int sourceCount = activeTab == ShopTab.Tools ? 3 : CountPassiveSources();
             var contentRt = (RectTransform)listContent;
             Debug.Log($"[ShopList] tab={activeTab}, source={sourceCount}, contentChildren={listContent.childCount}, contentSize={contentRt.rect.size}, overlayActive={overlayRoot.activeInHierarchy}, sibling={overlayRoot.transform.GetSiblingIndex()}");
             for (int i = 0; i < listContent.childCount; i++)

@@ -48,6 +48,12 @@ namespace PickupCent.Digging
         [SerializeField] private float rakeBrushRadius = 0.82f;
         [SerializeField] private float detectorBrushRadius = 0.42f;
 
+        [Header("도구 아이콘")]
+        [SerializeField] private Sprite handIcon;
+        [SerializeField] private Sprite shovelIcon;
+        [SerializeField] private Sprite rakeIcon;
+        [SerializeField] private Sprite detectorIcon;
+
         [SerializeField] private SandMaskController sandMask;
         [SerializeField] private Camera targetCamera;
 
@@ -200,6 +206,23 @@ namespace PickupCent.Digging
                 _ => handBrushRadius
             };
             return Mathf.Max(0.05f, baseRadius + brushRadiusBonus);
+        }
+
+        public Sprite GetToolIcon(ToolType tool) => tool switch
+        {
+            ToolType.Hand => handIcon,
+            ToolType.Shovel => shovelIcon,
+            ToolType.Rake => rakeIcon,
+            ToolType.Detector => detectorIcon,
+            _ => null
+        };
+
+        public void SetToolIcon(ToolType tool, Sprite sprite)
+        {
+            if (tool == ToolType.Hand) handIcon = sprite;
+            else if (tool == ToolType.Shovel) shovelIcon = sprite;
+            else if (tool == ToolType.Rake) rakeIcon = sprite;
+            else if (tool == ToolType.Detector) detectorIcon = sprite;
         }
 
         public bool CanRepairTool(ToolType tool) => IsToolOwned(tool) && tool != ToolType.Hand && GetToolDurability(tool) < GetToolMaxDurability(tool);
